@@ -1,0 +1,8 @@
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+    // Your Vite configuration
+    server: {
+        port: 5173
+    }
+})
