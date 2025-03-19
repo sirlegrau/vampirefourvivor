@@ -4,9 +4,174 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vampire Fourvivor</title>
-  <script type="module" src="/src/main.js"></script>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #111;
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+    }
+
+    #game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .game-title {
+      font-size: 3em;
+      margin-bottom: 0.5em;
+      color: #ff3333;
+      text-shadow: 0 0 10px #ff0000;
+    }
+
+    .loading-text {
+      font-size: 1.2em;
+      color: #999;
+    }
+
+    .game-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background-color: rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    .game-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .game-overlay-content {
+      text-align: center;
+      color: #fff;
+    }
+
+    .game-overlay-title {
+      font-size: 3em;
+      color: #ff3333;
+      margin-bottom: 1em;
+    }
+
+    .game-overlay-button {
+      padding: 0.8em 2em;
+      font-size: 1.2em;
+      background-color: #ff3333;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .game-overlay-button:hover {
+      background-color: #cc0000;
+    }
+
+    .game-instructions {
+      max-width: 800px;
+      margin: 2em auto;
+      padding: 1em;
+      background-color: rgba(0, 0, 0, 0.5);
+      border-radius: 8px;
+    }
+
+    .game-instructions h2 {
+      color: #ff3333;
+    }
+
+    .game-instructions ul {
+      text-align: left;
+    }
+
+    .game-controls {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1em;
+    }
+
+    .game-control {
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 0.5em 1em;
+      border-radius: 4px;
+      margin: 0 0.5em;
+    }
+
+    .game-players {
+      margin-top: 1em;
+      font-size: 0.9em;
+      color: #999;
+    }
+  </style>
 </head>
 <body>
-<h1>Vampire Fourvivor</h1>
+<div id="game-container">
+  <h1 class="game-title">Vampire Fourvivor</h1>
+  <div id="game-ui">
+    <div class="game-players">Players Online: <span id="player-count">0</span></div>
+  </div>
+  <div id="game-canvas"></div>
+
+  <div class="game-instructions">
+    <h2>How to Play</h2>
+    <div class="game-controls">
+      <div class="game-control">
+        <strong>Move:</strong> Arrow Keys
+      </div>
+      <div class="game-control">
+        <strong>Weapons:</strong> 1-3 Keys
+      </div>
+      <div class="game-control">
+        <strong>Objective:</strong> Survive as long as possible!
+      </div>
+    </div>
+    <p>Defeat enemies to gain XP and level up. Choose upgrades to become stronger!</p>
+  </div>
+</div>
+
+<div class="game-overlay" id="main-menu">
+  <div class="game-overlay-content">
+    <h1 class="game-overlay-title">Vampire Fourvivor</h1>
+    <p>Fight against endless waves of enemies!</p>
+    <button class="game-overlay-button" id="start-button">Start Game</button>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+<script>
+  // Show main menu on load
+  document.addEventListener('DOMContentLoaded', () => {
+    const mainMenu = document.getElementById('main-menu');
+    const startButton = document.getElementById('start-button');
+
+    mainMenu.classList.add('active');
+
+    startButton.addEventListener('click', () => {
+      mainMenu.classList.remove('active');
+    });
+
+    // Update player count
+    const socket = io("http://localhost:3000");
+    socket.on("playerCount", (count) => {
+      document.getElementById('player-count').textContent = count;
+    });
+  });
+</script>
 </body>
 </html>
