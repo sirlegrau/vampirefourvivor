@@ -5,7 +5,7 @@ const PORT = process.env.PORT || 3000; // Use Render's assigned port
 const httpServer = createServer();
 const io = new Server(httpServer, {
     cors: {
-        origin: ["http://localhost:5173", "https://your-frontend-domain.netlify.app"], // Add your Netlify/Vercel domain later
+        origin: ["http://localhost:5173", 'https://vampirefourvivor.netlify.app/'], // Add your Netlify/Vercel domain later
         methods: ["GET", "POST"],
         credentials: true
     }
