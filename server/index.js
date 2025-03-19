@@ -3,12 +3,14 @@ const { Server } = require("socket.io");
 
 const PORT = process.env.PORT || 3000;
 const httpServer = createServer();
+
 const io = new Server(httpServer, {
     cors: {
-        origin: ["http://localhost:5173", "https://vampirefourvivor.netlify.app/"],
+        origin: ["http://localhost:5173", "https://vampirefourvivor.netlify.app"], // Fixed CORS (No trailing slash)
         methods: ["GET", "POST"],
         credentials: true
-    }
+    },
+    transports: ["websocket", "polling"] // Ensures smooth connection
 });
 
 // Game state
@@ -42,6 +44,7 @@ const enemyStats = {
     boss: { hp: 30, speed: 0.7, points: 100, xpValue: 50 }
 };
 
+// Start the game loop
 function startGameLoop() {
     if (gameLoopInterval) clearInterval(gameLoopInterval);
     gameLoopInterval = setInterval(() => {
@@ -51,6 +54,7 @@ function startGameLoop() {
     startWaveSystem();
 }
 
+// Enemy wave spawning
 function startWaveSystem() {
     if (waveInterval) clearInterval(waveInterval);
     spawnWave();
@@ -61,6 +65,7 @@ function startWaveSystem() {
     }, 30000);
 }
 
+// Spawning a new wave of enemies
 function spawnWave() {
     const baseEnemies = 5 + currentWave * 2;
     let enemyCount = {
@@ -69,14 +74,17 @@ function spawnWave() {
         tank: Math.floor(baseEnemies * 0.1),
         boss: currentWave % 5 === 0 ? 1 : 0
     };
+
     Object.entries(enemyCount).forEach(([type, count]) => {
         for (let i = 0; i < count; i++) {
             setTimeout(() => spawnEnemy(type), i * 1000);
         }
     });
+
     io.emit("waveStarted", { wave: currentWave, enemyCount });
 }
 
+// Spawning an enemy
 function spawnEnemy(type = "basic") {
     const spawnPositions = [
         { x: Math.random() * 1600, y: -50 },
@@ -87,13 +95,16 @@ function spawnEnemy(type = "basic") {
     let { x, y } = spawnPositions[Math.floor(Math.random() * 4)];
     const id = `enemy-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const stats = enemyStats[type];
+
     const enemy = { id, x, y, type, hp: stats.hp * (1 + currentWave * 0.1), speed: stats.speed, points: stats.points, xpValue: stats.xpValue };
     enemies.push(enemy);
     io.emit("spawnEnemy", enemy);
 }
 
+// Moving enemies toward players
 function moveEnemies() {
     if (!Object.keys(players).length) return;
+
     enemies.forEach(enemy => {
         let nearestPlayer = Object.values(players).reduce((nearest, player) => {
             let distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
@@ -111,6 +122,7 @@ function moveEnemies() {
     });
 }
 
+// Handling enemy-player collisions
 function checkPlayerCollisions() {
     enemies = enemies.filter(enemy => {
         let hitPlayer = Object.entries(players).find(([id, player]) => Math.hypot(player.x - enemy.x, player.y - enemy.y) < 40);
@@ -125,10 +137,16 @@ function checkPlayerCollisions() {
     });
 }
 
+// Handling player connections
 io.on("connection", (socket) => {
     console.log(`🟢 Player connected: ${socket.id}`);
+
     players[socket.id] = { ...initialPlayerStats };
-    if (!gameInProgress) { gameInProgress = true; startGameLoop(); }
+
+    if (!gameInProgress) {
+        gameInProgress = true;
+        startGameLoop();
+    }
 
     socket.emit("currentPlayers", players);
     socket.emit("currentEnemies", enemies);
@@ -147,6 +165,7 @@ io.on("connection", (socket) => {
         console.log(`🔴 Player disconnected: ${socket.id}`);
         delete players[socket.id];
         socket.broadcast.emit("playerDisconnected", socket.id);
+
         if (!Object.keys(players).length) {
             console.log("❌ No players left. Stopping game loop.");
             gameInProgress = false;
@@ -159,6 +178,7 @@ io.on("connection", (socket) => {
     });
 });
 
+// Start the server
 httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
 });
