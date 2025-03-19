@@ -158,6 +158,6 @@ io.on("connection", (socket) => {
     });
 });
 
-httpServer.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, '3.75.158.163', () => {
     console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
 });
