@@ -96,7 +96,7 @@ class GameScene extends Phaser.Scene {
     }
 
     setupSocketConnection() {
-        this.socket = io("http://localhost:3000");
+        this.socket = io("https://vampirefourvivor.onrender.com");
 
         this.socket.on("currentPlayers", (players) => {
             Object.keys(players).forEach((id) => {
