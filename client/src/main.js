@@ -78,15 +78,21 @@ class GameScene extends Phaser.Scene {
         // Weapon display
         this.weaponText = this.add.text(20, 140, "Weapon: Basic Shot", { fontSize: '16px', fill: '#ffffff' });
 
-        // Add all UI elements to group for camera scrolling
+        // Add all UI elements to group
         this.uiGroup.add(this.hpText);
         this.uiGroup.add(this.levelText);
         this.uiGroup.add(this.xpText);
         this.uiGroup.add(this.scoreText);
         this.uiGroup.add(this.weaponText);
 
-        // Make UI stick to camera
-        this.uiGroup.setScrollFactor(0);
+        // Make UI stick to camera by setting setScrollFactor on each element individually
+        this.hpBar.setScrollFactor(0);
+        this.hpText.setScrollFactor(0);
+        this.levelText.setScrollFactor(0);
+        this.xpBar.setScrollFactor(0);
+        this.xpText.setScrollFactor(0);
+        this.scoreText.setScrollFactor(0);
+        this.weaponText.setScrollFactor(0);
     }
 
     setupSocketConnection() {
