@@ -3,7 +3,7 @@ const { Server } = require("socket.io");
 
 const PORT = process.env.PORT || 3000; // Use Render's assigned port
 const httpServer = createServer();
-const io = new Server(server, {
+const io = new Server(httpServer, {
     cors: {
         origin: ["http://localhost:5173", "https://your-frontend-domain.netlify.app"], // Add your Netlify/Vercel domain later
         methods: ["GET", "POST"],
@@ -122,6 +122,29 @@ function moveEnemies() {
                 io.emit("enemyMoved", { id: enemy.id, x: enemy.x, y: enemy.y });
             }
         }
+    });
+}
+
+// Add the missing checkPlayerCollisions function
+function checkPlayerCollisions() {
+    if (Object.keys(players).length === 0) return;
+
+    enemies.forEach((enemy, enemyIndex) => {
+        Object.entries(players).forEach(([playerId, player]) => {
+            const distance = Math.sqrt((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2);
+            if (distance < 30) { // Collision detected
+                player.hp -= 1;
+                io.emit("playerDamaged", { id: playerId, hp: player.hp });
+
+                if (player.hp <= 0) {
+                    io.emit("playerDied", playerId);
+                }
+
+                // Remove enemy after collision
+                enemies.splice(enemyIndex, 1);
+                io.emit("enemyDestroyed", enemy.id);
+            }
+        });
     });
 }
 
