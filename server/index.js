@@ -42,12 +42,21 @@ const enemyStats = {
     boss: { hp: 30, speed: 0.7, points: 100, xpValue: 50 }
 };
 
+// Added levels and upgrades
+const levelUpXpRequirements = level => level * 100;
+const upgradeOptions = {
+    hp: player => { player.maxHp += 2; player.hp = player.maxHp; },
+    damage: player => { player.damageMultiplier += 0.2; },
+    cooldown: player => { player.cooldownReduction += 0.1; }
+};
+
 function startGameLoop() {
     if (gameLoopInterval) clearInterval(gameLoopInterval);
     gameLoopInterval = setInterval(() => {
         moveEnemies();
         moveBullets();
         checkCollisions();
+        checkLevelUps();
     }, 33); // Run at approximately 30 FPS
     startWaveSystem();
 }
@@ -123,6 +132,7 @@ function moveBullets() {
 
         // Remove bullets that are out of bounds
         if (bullet.x < 0 || bullet.x > 1600 || bullet.y < 0 || bullet.y > 1200) {
+            io.emit("bulletDestroyed", bullet.id);
             return false;
         }
 
@@ -136,7 +146,11 @@ function checkCollisions() {
     bullets.forEach(bullet => {
         enemies.forEach(enemy => {
             if (Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < 30) {
-                enemy.hp -= bullet.damage;
+                // Apply damage multiplier from player
+                const player = players[bullet.playerId];
+                const damage = bullet.damage * (player ? player.damageMultiplier : 1);
+
+                enemy.hp -= damage;
                 io.emit("enemyHit", { id: enemy.id, hp: enemy.hp });
 
                 if (enemy.hp <= 0) {
@@ -182,6 +196,21 @@ function checkCollisions() {
     });
 }
 
+function checkLevelUps() {
+    Object.entries(players).forEach(([playerId, player]) => {
+        const xpNeeded = levelUpXpRequirements(player.level);
+        if (player.xp >= xpNeeded) {
+            player.level += 1;
+            io.emit("updateXP", {
+                id: playerId,
+                xp: player.xp,
+                level: player.level,
+                leveledUp: true
+            });
+        }
+    });
+}
+
 function killEnemy(enemy, playerId) {
     const player = players[playerId];
     if (player) {
@@ -224,17 +253,46 @@ io.on("connection", (socket) => {
     });
 
     socket.on("playerShoot", ({ x, y, angle, damage }) => {
+        if (!players[socket.id]) return;
+
+        const player = players[socket.id];
+        const adjustedDamage = damage * player.damageMultiplier;
+
         const bullet = {
             id: `bullet-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             x,
             y,
             velocityX: Math.cos(angle) * 10,
             velocityY: Math.sin(angle) * 10,
-            damage,
+            damage: adjustedDamage,
             playerId: socket.id
         };
         bullets.push(bullet);
         io.emit("bulletCreated", bullet);
+    });
+
+    socket.on("collectXpOrb", (orbId) => {
+        const orb = xpOrbs.find(o => o.id === orbId);
+        if (orb && players[socket.id]) {
+            players[socket.id].xp += orb.value;
+            io.emit("updateXP", {
+                id: socket.id,
+                xp: players[socket.id].xp,
+                level: players[socket.id].level
+            });
+            xpOrbs = xpOrbs.filter(o => o.id !== orbId);
+            io.emit("xpOrbCollected", orbId);
+        }
+    });
+
+    socket.on("upgrade", (type) => {
+        if (players[socket.id] && upgradeOptions[type]) {
+            upgradeOptions[type](players[socket.id]);
+            io.emit("playerUpgraded", {
+                id: socket.id,
+                stats: players[socket.id]
+            });
+        }
     });
 
     socket.on("disconnect", () => {
