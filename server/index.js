@@ -1,11 +1,11 @@
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 
-const PORT = process.env.PORT || 3000; // Use Render's assigned port
+const PORT = process.env.PORT || 3000;
 const httpServer = createServer();
 const io = new Server(httpServer, {
     cors: {
-        origin: ["http://localhost:5173", 'https://vampirefourvivor.netlify.app/'], // Add your Netlify/Vercel domain later
+        origin: ["http://localhost:5173", "https://vampirefourvivor.netlify.app/"],
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -15,13 +15,12 @@ const io = new Server(httpServer, {
 let players = {};
 let enemies = [];
 let xpOrbs = [];
-let enemyTypes = ['basic', 'fast', 'tank', 'boss'];
 let gameInProgress = false;
 let gameLoopInterval;
-let currentWave = 0;
 let waveInterval;
+let currentWave = 0;
 
-// Initial player stats
+// Player stats
 const initialPlayerStats = {
     x: 800,
     y: 600,
@@ -35,7 +34,7 @@ const initialPlayerStats = {
     cooldownReduction: 1
 };
 
-// Enemy stats by type
+// Enemy stats
 const enemyStats = {
     basic: { hp: 3, speed: 1, points: 10, xpValue: 5 },
     fast: { hp: 2, speed: 2, points: 15, xpValue: 7 },
@@ -43,7 +42,6 @@ const enemyStats = {
     boss: { hp: 30, speed: 0.7, points: 100, xpValue: 50 }
 };
 
-// Start the game loop
 function startGameLoop() {
     if (gameLoopInterval) clearInterval(gameLoopInterval);
     gameLoopInterval = setInterval(() => {
@@ -64,108 +62,84 @@ function startWaveSystem() {
 }
 
 function spawnWave() {
-    const baseEnemies = 5;
-    const waveDifficulty = Math.ceil(baseEnemies + (currentWave * 2));
+    const baseEnemies = 5 + currentWave * 2;
     let enemyCount = {
-        basic: Math.floor(waveDifficulty * 0.6),
-        fast: Math.floor(waveDifficulty * 0.3),
-        tank: Math.floor(waveDifficulty * 0.1),
+        basic: Math.floor(baseEnemies * 0.6),
+        fast: Math.floor(baseEnemies * 0.3),
+        tank: Math.floor(baseEnemies * 0.1),
         boss: currentWave % 5 === 0 ? 1 : 0
     };
     Object.entries(enemyCount).forEach(([type, count]) => {
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
-                spawnEnemy(type);
-            }, i * 1000);
+            setTimeout(() => spawnEnemy(type), i * 1000);
         }
     });
     io.emit("waveStarted", { wave: currentWave, enemyCount });
 }
 
-// Spawn enemy function
-function spawnEnemy(type = 'basic') {
-    const spawnSide = Math.floor(Math.random() * 4);
-    let x, y;
-    switch(spawnSide) {
-        case 0: x = Math.random() * 1600; y = -50; break;
-        case 1: x = 1650; y = Math.random() * 1200; break;
-        case 2: x = Math.random() * 1600; y = 1250; break;
-        case 3: x = -50; y = Math.random() * 1200; break;
-    }
+function spawnEnemy(type = "basic") {
+    const spawnPositions = [
+        { x: Math.random() * 1600, y: -50 },
+        { x: 1650, y: Math.random() * 1200 },
+        { x: Math.random() * 1600, y: 1250 },
+        { x: -50, y: Math.random() * 1200 }
+    ];
+    let { x, y } = spawnPositions[Math.floor(Math.random() * 4)];
     const id = `enemy-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    const stats = enemyStats[type] || enemyStats.basic;
+    const stats = enemyStats[type];
     const enemy = { id, x, y, type, hp: stats.hp * (1 + currentWave * 0.1), speed: stats.speed, points: stats.points, xpValue: stats.xpValue };
     enemies.push(enemy);
     io.emit("spawnEnemy", enemy);
-    return enemy;
 }
 
 function moveEnemies() {
-    if (Object.keys(players).length === 0) return;
+    if (!Object.keys(players).length) return;
     enemies.forEach(enemy => {
-        let nearestPlayer = null;
-        let nearestDistance = Infinity;
-        Object.values(players).forEach(player => {
-            const distance = Math.sqrt((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2);
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearestPlayer = player;
-            }
-        });
+        let nearestPlayer = Object.values(players).reduce((nearest, player) => {
+            let distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+            return !nearest || distance < nearest.distance ? { player, distance } : nearest;
+        }, null)?.player;
+
         if (nearestPlayer) {
-            const dx = nearestPlayer.x - enemy.x;
-            const dy = nearestPlayer.y - enemy.y;
-            const length = Math.sqrt(dx ** 2 + dy ** 2);
-            if (length > 0) {
-                enemy.x += (dx / length) * enemy.speed;
-                enemy.y += (dy / length) * enemy.speed;
-                io.emit("enemyMoved", { id: enemy.id, x: enemy.x, y: enemy.y });
-            }
+            let dx = nearestPlayer.x - enemy.x;
+            let dy = nearestPlayer.y - enemy.y;
+            let length = Math.hypot(dx, dy);
+            enemy.x += (dx / length) * enemy.speed;
+            enemy.y += (dy / length) * enemy.speed;
+            io.emit("enemyMoved", { id: enemy.id, x: enemy.x, y: enemy.y });
         }
     });
 }
 
-// Add the missing checkPlayerCollisions function
 function checkPlayerCollisions() {
-    if (Object.keys(players).length === 0) return;
-
-    enemies.forEach((enemy, enemyIndex) => {
-        Object.entries(players).forEach(([playerId, player]) => {
-            const distance = Math.sqrt((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2);
-            if (distance < 30) { // Collision detected
-                player.hp -= 1;
-                io.emit("playerDamaged", { id: playerId, hp: player.hp });
-
-                if (player.hp <= 0) {
-                    io.emit("playerDied", playerId);
-                }
-
-                // Remove enemy after collision
-                enemies.splice(enemyIndex, 1);
-                io.emit("enemyDestroyed", enemy.id);
-            }
-        });
+    enemies = enemies.filter(enemy => {
+        let hitPlayer = Object.entries(players).find(([id, player]) => Math.hypot(player.x - enemy.x, player.y - enemy.y) < 40);
+        if (hitPlayer) {
+            let [playerId, player] = hitPlayer;
+            player.hp -= 1;
+            io.emit("updateHP", { id: playerId, hp: player.hp });
+            if (player.hp <= 0) io.emit("playerDied", playerId);
+            return false;
+        }
+        return true;
     });
 }
 
-// Socket.IO connections
 io.on("connection", (socket) => {
     console.log(`🟢 Player connected: ${socket.id}`);
     players[socket.id] = { ...initialPlayerStats };
-    if (!gameInProgress) {
-        gameInProgress = true;
-        startGameLoop();
-    }
+    if (!gameInProgress) { gameInProgress = true; startGameLoop(); }
+
     socket.emit("currentPlayers", players);
     socket.emit("currentEnemies", enemies);
     socket.emit("currentXpOrbs", xpOrbs);
     socket.broadcast.emit("newPlayer", { id: socket.id, ...players[socket.id] });
 
-    socket.on("playerMove", (data) => {
+    socket.on("playerMove", ({ x, y }) => {
         if (players[socket.id]) {
-            players[socket.id].x = data.x;
-            players[socket.id].y = data.y;
-            socket.broadcast.emit("playerMoved", { id: socket.id, x: data.x, y: data.y });
+            players[socket.id].x = x;
+            players[socket.id].y = y;
+            socket.broadcast.emit("playerMoved", { id: socket.id, x, y });
         }
     });
 
@@ -173,7 +147,7 @@ io.on("connection", (socket) => {
         console.log(`🔴 Player disconnected: ${socket.id}`);
         delete players[socket.id];
         socket.broadcast.emit("playerDisconnected", socket.id);
-        if (Object.keys(players).length === 0) {
+        if (!Object.keys(players).length) {
             console.log("❌ No players left. Stopping game loop.");
             gameInProgress = false;
             clearInterval(gameLoopInterval);
@@ -185,6 +159,6 @@ io.on("connection", (socket) => {
     });
 });
 
-httpServer.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
 });
