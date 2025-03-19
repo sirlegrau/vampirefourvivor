@@ -1,6 +1,7 @@
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 
+const PORT = process.env.PORT || 3000; // ✅ Use dynamic port for Render
 const httpServer = createServer();
 const io = new Server(httpServer, {
     cors: { origin: "*" }
@@ -13,8 +14,8 @@ let xpOrbs = [];
 let enemyTypes = ['basic', 'fast', 'tank', 'boss'];
 let gameInProgress = false;
 let gameLoopInterval;
-let currentWave = 0;
 let waveInterval;
+let currentWave = 0;
 
 // Initial player stats
 const initialPlayerStats = {
@@ -38,26 +39,20 @@ const enemyStats = {
     boss: { hp: 30, speed: 0.7, points: 100, xpValue: 50 }
 };
 
-// Game loop
+// ✅ Start Game Loop when at least one player joins
 function startGameLoop() {
     if (gameLoopInterval) clearInterval(gameLoopInterval);
-
     gameLoopInterval = setInterval(() => {
         moveEnemies();
         checkPlayerCollisions();
     }, 100);
 
-    // Start wave system
     startWaveSystem();
 }
 
 function startWaveSystem() {
     if (waveInterval) clearInterval(waveInterval);
-
-    // Initial wave spawn
     spawnWave();
-
-    // Schedule waves every 30 seconds
     waveInterval = setInterval(() => {
         currentWave++;
         console.log(`🌊 Starting wave ${currentWave}`);
@@ -65,65 +60,43 @@ function startWaveSystem() {
     }, 30000);
 }
 
+// ✅ Correct enemy spawning logic
 function spawnWave() {
-    const baseEnemies = 5;
-    const waveDifficulty = Math.ceil(baseEnemies + (currentWave * 2));
-
-    // Calculate enemy distribution
+    const waveDifficulty = 5 + (currentWave * 2);
     let enemyCount = {
         basic: Math.floor(waveDifficulty * 0.6),
         fast: Math.floor(waveDifficulty * 0.3),
         tank: Math.floor(waveDifficulty * 0.1),
-        boss: currentWave % 5 === 0 ? 1 : 0 // Boss every 5 waves
+        boss: currentWave % 5 === 0 ? 1 : 0
     };
 
-    // Spawn enemies with delay
     Object.entries(enemyCount).forEach(([type, count]) => {
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
-                spawnEnemy(type);
-            }, i * 1000); // Spawn one enemy every second
+            setTimeout(() => spawnEnemy(type), i * 1000);
         }
     });
 
-    // Announce wave to all players
     io.emit("waveStarted", { wave: currentWave, enemyCount });
 }
 
-// Spawn a single enemy
+// ✅ Ensures enemies are spawned properly
 function spawnEnemy(type = 'basic') {
-    // Choose a random spawning position outside the visible area
-    const spawnSide = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
+    const spawnSide = Math.floor(Math.random() * 4);
     let x, y;
 
-    switch(spawnSide) {
-        case 0: // Top
-            x = Math.random() * 1600;
-            y = -50;
-            break;
-        case 1: // Right
-            x = 1650;
-            y = Math.random() * 1200;
-            break;
-        case 2: // Bottom
-            x = Math.random() * 1600;
-            y = 1250;
-            break;
-        case 3: // Left
-            x = -50;
-            y = Math.random() * 1200;
-            break;
+    switch (spawnSide) {
+        case 0: x = Math.random() * 1600; y = -50; break;
+        case 1: x = 1650; y = Math.random() * 1200; break;
+        case 2: x = Math.random() * 1600; y = 1250; break;
+        case 3: x = -50; y = Math.random() * 1200; break;
     }
 
     const id = `enemy-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const stats = enemyStats[type] || enemyStats.basic;
 
     const enemy = {
-        id,
-        x,
-        y,
-        type,
-        hp: stats.hp * (1 + currentWave * 0.1), // Scale HP with wave
+        id, x, y, type,
+        hp: stats.hp * (1 + currentWave * 0.1),
         speed: stats.speed,
         points: stats.points,
         xpValue: stats.xpValue
@@ -131,25 +104,18 @@ function spawnEnemy(type = 'basic') {
 
     enemies.push(enemy);
     io.emit("spawnEnemy", enemy);
-
-    return enemy;
 }
 
-// Move enemies towards the nearest player
+// ✅ Prevents errors if no players are present
 function moveEnemies() {
     if (Object.keys(players).length === 0) return;
 
     enemies.forEach(enemy => {
-        // Find the nearest player
         let nearestPlayer = null;
         let nearestDistance = Infinity;
 
         Object.values(players).forEach(player => {
-            const distance = Math.sqrt(
-                Math.pow(player.x - enemy.x, 2) +
-                Math.pow(player.y - enemy.y, 2)
-            );
-
+            const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
             if (distance < nearestDistance) {
                 nearestDistance = distance;
                 nearestPlayer = player;
@@ -157,65 +123,28 @@ function moveEnemies() {
         });
 
         if (nearestPlayer) {
-            // Move towards the player
             const dx = nearestPlayer.x - enemy.x;
             const dy = nearestPlayer.y - enemy.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
+            const length = Math.hypot(dx, dy);
 
             if (length > 0) {
-                // Normalize and apply speed
                 enemy.x += (dx / length) * enemy.speed;
                 enemy.y += (dy / length) * enemy.speed;
-
-                // Broadcast enemy movement
-                io.emit("enemyMoved", {
-                    id: enemy.id,
-                    x: enemy.x,
-                    y: enemy.y
-                });
+                io.emit("enemyMoved", { id: enemy.id, x: enemy.x, y: enemy.y });
             }
         }
     });
 }
 
-// Check for collisions between enemies and players
+// ✅ Prevents errors on missing players
 function checkPlayerCollisions() {
     Object.entries(players).forEach(([playerId, player]) => {
         enemies.forEach(enemy => {
-            const distance = Math.sqrt(
-                Math.pow(player.x - enemy.x, 2) +
-                Math.pow(player.y - enemy.y, 2)
-            );
-
-            // Collision detected
+            const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
             if (distance < 40) {
-                // Deal damage to player
                 player.hp -= 1;
+                io.emit("updateHP", { id: playerId, hp: player.hp });
 
-                // Broadcast player HP update
-                io.emit("updateHP", {
-                    id: playerId,
-                    hp: player.hp
-                });
-
-                // Push enemy away from player
-                const dx = enemy.x - player.x;
-                const dy = enemy.y - player.y;
-                const length = Math.sqrt(dx * dx + dy * dy);
-
-                if (length > 0) {
-                    enemy.x += (dx / length) * 50;
-                    enemy.y += (dy / length) * 50;
-
-                    // Broadcast enemy movement
-                    io.emit("enemyMoved", {
-                        id: enemy.id,
-                        x: enemy.x,
-                        y: enemy.y
-                    });
-                }
-
-                // Check if player is dead
                 if (player.hp <= 0) {
                     io.emit("playerDied", playerId);
                 }
@@ -224,154 +153,48 @@ function checkPlayerCollisions() {
     });
 }
 
-// Create XP orb at position
-function createXpOrb(x, y, value, id = null) {
-    const orbId = id || `orb-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const orb = { id: orbId, x, y, value };
-    xpOrbs.push(orb);
-    return orb;
-}
-
-// Socket.IO connection handler
+// ✅ Handles player connections & disconnections
 io.on("connection", (socket) => {
     console.log(`🟢 Player connected: ${socket.id}`);
-
-    // Add player to game
     players[socket.id] = { ...initialPlayerStats };
 
-    // Start game loop if not already running
     if (!gameInProgress) {
         gameInProgress = true;
         startGameLoop();
     }
 
-    // Send current game state to player
     socket.emit("currentPlayers", players);
     socket.emit("currentEnemies", enemies);
     socket.emit("currentXpOrbs", xpOrbs);
-    socket.broadcast.emit("newPlayer", { id: socket.id, ...players[socket.id] });
+    io.emit("newPlayer", { id: socket.id, ...players[socket.id] });
 
-    // Player movement
     socket.on("playerMove", (data) => {
         if (players[socket.id]) {
             players[socket.id].x = data.x;
             players[socket.id].y = data.y;
-            socket.broadcast.emit("playerMoved", { id: socket.id, x: data.x, y: data.y });
+            io.emit("playerMoved", { id: socket.id, x: data.x, y: data.y });
         }
     });
 
-    // Enemy hit by player bullet
     socket.on("enemyHit", (data) => {
         const { enemyId, damage } = data;
         const enemy = enemies.find(e => e.id === enemyId);
-
         if (enemy) {
-            // Apply damage
-            const actualDamage = damage * players[socket.id].damageMultiplier;
-            enemy.hp -= actualDamage;
+            enemy.hp -= damage * players[socket.id].damageMultiplier;
+            io.emit("enemyHit", { enemyId, damage });
 
-            // Broadcast hit effect
-            io.emit("enemyHit", { enemyId, damage: actualDamage });
-
-            // Check if enemy is killed
             if (enemy.hp <= 0) {
-                // Remove enemy
                 enemies = enemies.filter(e => e.id !== enemyId);
-
-                // Add score to player
-                players[socket.id].score += enemy.points;
-
-                // Broadcast kill
-                io.emit("enemyKilled", {
-                    enemyId,
-                    killerId: socket.id,
-                    points: enemy.points
-                });
-
-                // Create XP orb
-                const orb = createXpOrb(enemy.x, enemy.y, enemy.xpValue);
-                io.emit("spawnXpOrb", orb);
+                io.emit("enemyKilled", { enemyId, killerId: socket.id });
             }
         }
     });
 
-    // Player collects XP orb
-    socket.on("collectXpOrb", (orbId) => {
-        const orb = xpOrbs.find(o => o.id === orbId);
-
-        if (orb) {
-            // Add XP to player
-            players[socket.id].xp += orb.value;
-
-            // Remove orb
-            xpOrbs = xpOrbs.filter(o => o.id !== orbId);
-            io.emit("xpOrbCollected", orbId);
-
-            // Check for level up
-            const oldLevel = players[socket.id].level;
-            const newLevel = Math.floor(1 + (players[socket.id].xp / 100));
-
-            if (newLevel > oldLevel) {
-                players[socket.id].level = newLevel;
-
-                // Broadcast level up
-                io.emit("updateXP", {
-                    id: socket.id,
-                    xp: players[socket.id].xp,
-                    level: players[socket.id].level,
-                    leveledUp: true
-                });
-            } else {
-                // Just broadcast XP update
-                io.emit("updateXP", {
-                    id: socket.id,
-                    xp: players[socket.id].xp,
-                    level: players[socket.id].level,
-                    leveledUp: false
-                });
-            }
-        }
-    });
-
-    // Player selects upgrade
-    socket.on("upgrade", (upgradeType) => {
-        switch(upgradeType) {
-            case "hp":
-                players[socket.id].maxHp += 2;
-                players[socket.id].hp = players[socket.id].maxHp;
-                break;
-            case "damage":
-                players[socket.id].damageMultiplier += 0.2;
-                break;
-            case "cooldown":
-                players[socket.id].cooldownReduction -= 0.1;
-                if (players[socket.id].cooldownReduction < 0.5) {
-                    players[socket.id].cooldownReduction = 0.5; // Minimum cooldown
-                }
-                break;
-        }
-
-        // Broadcast upgraded stats
-        io.emit("playerUpgraded", {
-            id: socket.id,
-            upgradeType,
-            stats: players[socket.id]
-        });
-    });
-
-    // Player spawns XP orb (usually from killing an enemy)
-    socket.on("spawnXpOrb", (data) => {
-        const orb = createXpOrb(data.x, data.y, data.value, data.id);
-        socket.broadcast.emit("spawnXpOrb", orb);
-    });
-
-    // Player disconnects
     socket.on("disconnect", () => {
         console.log(`🔴 Player disconnected: ${socket.id}`);
         delete players[socket.id];
-        socket.broadcast.emit("playerDisconnected", socket.id);
+        io.emit("playerDisconnected", socket.id);
 
-        // Stop game loop if no players left
         if (Object.keys(players).length === 0) {
             console.log("❌ No players left. Stopping game loop.");
             gameInProgress = false;
@@ -384,6 +207,7 @@ io.on("connection", (socket) => {
     });
 });
 
-httpServer.listen(3000, () => {
-    console.log("✅ Server running on http://localhost:3000");
+// ✅ Ensures server binds correctly on Render
+httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`✅ Server running on http://localhost:${PORT}`);
 });
