@@ -170,7 +170,7 @@
 
     // Update player count
     const socket = io(import.meta.env.PROD
-            ? 'https://your-backend-url.com' // This will be your Render URL later
+            ? 'https://vampirefourvivor.onrender.com' // This will be your Render URL later
             : 'http://localhost:3000'); // Your local development URL
     socket.on("playerCount", (count) => {
       document.getElementById('player-count').textContent = count;
