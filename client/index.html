@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vampire Fourvivor</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="src/style.css">
   <style>
     body {
       margin: 0;
@@ -31,11 +31,6 @@
       text-shadow: 0 0 10px #ff0000;
     }
 
-    .loading-text {
-      font-size: 1.2em;
-      color: #999;
-    }
-
     .game-overlay {
       position: absolute;
       top: 0;
@@ -51,11 +46,6 @@
       pointer-events: none;
       opacity: 0;
       transition: opacity 0.5s;
-    }
-
-    .game-overlay.active {
-      opacity: 1;
-      pointer-events: all;
     }
 
     .game-overlay-content {
@@ -169,11 +159,17 @@
     });
 
     // Update player count
-    const socket = io(import.meta.env.PROD
-            ? 'https://vampirefourvivor.onrender.com' // This will be your Render URL later
-            : 'https://vampirefourvivor.onrender.com); // Your local development URL
+    const socket = io("https://vampirefourvivor.onrender.com", {
+      transports: ["websocket", "polling"],
+      withCredentials: true
+    });
+
+    socket.on("connect", () => {
+      console.log("✅ Connected to server:", socket.id);
+    });
+
     socket.on("playerCount", (count) => {
-      document.getElementById('player-count').textContent = count;
+      document.getElementById("player-count").textContent = count;
     });
   });
 </script>
