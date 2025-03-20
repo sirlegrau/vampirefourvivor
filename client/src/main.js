@@ -12,7 +12,7 @@ class GameScene extends Phaser.Scene {
         this.currentWeapon = 0;
         this.canShoot = true;
         this.gameOver = false;
-        this.socketUrl = import.meta.env.VITE_SERVER_URL || "https://vampirefourvivor.onrender.com0";
+        this.socketUrl = import.meta.env.VITE_SERVER_URL || "https://vampirefourvivor.onrender.com";
     }
 
     preload() {
