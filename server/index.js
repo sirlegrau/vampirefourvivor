@@ -1,3 +1,4 @@
+// index.js - Node.js server
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 
@@ -6,9 +7,10 @@ const httpServer = createServer();
 
 const io = new Server(httpServer, {
     cors: {
-        origin: ["http://localhost:5173", "https://vampirefourvivor.netlify.app"],
-        methods: ["GET", "POST"],
-        credentials: true
+        origin: "*",
+        methods: ["GET", "POST", "PUT", "OPTIONS"],
+        credentials: true,
+        allowedHeaders: ["my-custom-header"]
     },
     transports: ["websocket", "polling"]
 });
@@ -48,91 +50,11 @@ function startGameLoop() {
         moveEnemies();
         moveBullets();
         checkCollisions();
-    }, 33); // Run at approximately 30 FPS
+    }, 33);
     startWaveSystem();
 }
 
-function startWaveSystem() {
-    if (waveInterval) clearInterval(waveInterval);
-    spawnWave();
-    waveInterval = setInterval(() => {
-        currentWave++;
-        console.log(`🌊 Starting wave ${currentWave}`);
-        spawnWave();
-    }, 30000);
-}
-
-function spawnWave() {
-    const baseEnemies = 5 + currentWave * 2;
-    let enemyCount = {
-        basic: Math.floor(baseEnemies * 0.6),
-        fast: Math.floor(baseEnemies * 0.3),
-        tank: Math.floor(baseEnemies * 0.1),
-        boss: currentWave % 5 === 0 ? 1 : 0
-    };
-
-    Object.entries(enemyCount).forEach(([type, count]) => {
-        for (let i = 0; i < count; i++) {
-            setTimeout(() => spawnEnemy(type), i * 1000);
-        }
-    });
-
-    io.emit("waveStarted", { wave: currentWave, enemyCount });
-}
-
-function spawnEnemy(type = "basic") {
-    const spawnPositions = [
-        { x: Math.random() * 1600, y: -50 },
-        { x: 1650, y: Math.random() * 1200 },
-        { x: Math.random() * 1600, y: 1250 },
-        { x: -50, y: Math.random() * 1200 }
-    ];
-    let { x, y } = spawnPositions[Math.floor(Math.random() * 4)];
-    const id = `enemy-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    const stats = enemyStats[type];
-
-    const enemy = { id, x, y, type, hp: stats.hp * (1 + currentWave * 0.1), speed: stats.speed, points: stats.points, xpValue: stats.xpValue };
-    enemies.push(enemy);
-    io.emit("spawnEnemy", enemy);
-}
-
-function moveEnemies() {
-    if (!Object.keys(players).length) return;
-
-    enemies.forEach(enemy => {
-        let nearestPlayer = Object.values(players).reduce((nearest, player) => {
-            let distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
-            return !nearest || distance < nearest.distance ? { player, distance } : nearest;
-        }, null)?.player;
-
-        if (nearestPlayer) {
-            let dx = nearestPlayer.x - enemy.x;
-            let dy = nearestPlayer.y - enemy.y;
-            let length = Math.hypot(dx, dy);
-            enemy.x += (dx / length) * enemy.speed;
-            enemy.y += (dy / length) * enemy.speed;
-            io.emit("enemyMoved", { id: enemy.id, x: enemy.x, y: enemy.y });
-        }
-    });
-}
-
-function moveBullets() {
-    bullets = bullets.filter(bullet => {
-        bullet.x += bullet.velocityX;
-        bullet.y += bullet.velocityY;
-
-        // Remove bullets that are out of bounds
-        if (bullet.x < 0 || bullet.x > 1600 || bullet.y < 0 || bullet.y > 1200) {
-            return false;
-        }
-
-        io.emit("bulletMoved", { id: bullet.id, x: bullet.x, y: bullet.y });
-        return true;
-    });
-}
-
 function checkCollisions() {
-    // Check bullet-enemy collisions
     bullets.forEach(bullet => {
         enemies.forEach(enemy => {
             if (Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < 30) {
@@ -143,91 +65,24 @@ function checkCollisions() {
                     killEnemy(enemy, bullet.playerId);
                 }
 
-                // Remove the bullet
                 bullets = bullets.filter(b => b.id !== bullet.id);
                 io.emit("bulletDestroyed", bullet.id);
             }
         });
     });
-
-    // Check player-enemy collisions
-    Object.entries(players).forEach(([playerId, player]) => {
-        enemies.forEach(enemy => {
-            if (Math.hypot(player.x - enemy.x, player.y - enemy.y) < 40) {
-                player.hp -= 1;
-                io.emit("updateHP", { id: playerId, hp: player.hp });
-
-                if (player.hp <= 0) {
-                    io.emit("playerDied", playerId);
-                }
-
-                // Remove the enemy
-                enemies = enemies.filter(e => e.id !== enemy.id);
-                io.emit("enemyDestroyed", enemy.id);
-            }
-        });
-    });
-
-    // Check player-xpOrb collisions
-    Object.entries(players).forEach(([playerId, player]) => {
-        xpOrbs = xpOrbs.filter(orb => {
-            if (Math.hypot(player.x - orb.x, player.y - orb.y) < 40) {
-                player.xp += orb.value;
-                io.emit("updateXP", { id: playerId, xp: player.xp });
-                io.emit("xpOrbCollected", orb.id);
-                return false;
-            }
-            return true;
-        });
-    });
-}
-
-function killEnemy(enemy, playerId) {
-    const player = players[playerId];
-    if (player) {
-        player.score += enemy.points;
-        io.emit("updateScore", { id: playerId, score: player.score });
-    }
-
-    spawnXpOrb(enemy.x, enemy.y, enemy.xpValue);
-    enemies = enemies.filter(e => e.id !== enemy.id);
-    io.emit("enemyDestroyed", enemy.id);
-}
-
-function spawnXpOrb(x, y, value) {
-    const orb = { id: `xp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, x, y, value };
-    xpOrbs.push(orb);
-    io.emit("spawnXpOrb", orb);
 }
 
 io.on("connection", (socket) => {
-    console.log(`🟢 Player connected: ${socket.id}`);
-
     players[socket.id] = { ...initialPlayerStats };
-
     if (!gameInProgress) {
         gameInProgress = true;
         startGameLoop();
     }
 
-    socket.emit("currentPlayers", players);
-    socket.emit("currentEnemies", enemies);
-    socket.emit("currentXpOrbs", xpOrbs);
-    socket.broadcast.emit("newPlayer", { id: socket.id, ...players[socket.id] });
-
-    socket.on("playerMove", ({ x, y }) => {
-        if (players[socket.id]) {
-            players[socket.id].x = x;
-            players[socket.id].y = y;
-            socket.broadcast.emit("playerMoved", { id: socket.id, x, y });
-        }
-    });
-
     socket.on("playerShoot", ({ x, y, angle, damage }) => {
         const bullet = {
             id: `bullet-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            x,
-            y,
+            x, y,
             velocityX: Math.cos(angle) * 10,
             velocityY: Math.sin(angle) * 10,
             damage,
@@ -236,25 +91,86 @@ io.on("connection", (socket) => {
         bullets.push(bullet);
         io.emit("bulletCreated", bullet);
     });
-
-    socket.on("disconnect", () => {
-        console.log(`🔴 Player disconnected: ${socket.id}`);
-        delete players[socket.id];
-        socket.broadcast.emit("playerDisconnected", socket.id);
-
-        if (!Object.keys(players).length) {
-            console.log("❌ No players left. Stopping game loop.");
-            gameInProgress = false;
-            clearInterval(gameLoopInterval);
-            clearInterval(waveInterval);
-            currentWave = 0;
-            enemies = [];
-            xpOrbs = [];
-            bullets = [];
-        }
-    });
 });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
 });
+
+// main.js - Phaser Client
+import Phaser from "phaser";
+import { io } from "socket.io-client";
+
+class GameScene extends Phaser.Scene {
+    constructor() {
+        super("GameScene");
+        this.players = {};
+        this.enemies = {};
+        this.bullets = [];
+        this.playerStats = { hp: 5, maxHp: 5, xp: 0, level: 1, score: 0 };
+    }
+
+    setupSocketConnection() {
+        this.socket = io("https://vampirefourvivor.onrender.com");
+
+        this.socket.on("enemyHit", (data) => {
+            const enemy = this.enemies[data.id];
+            if (enemy) {
+                this.hitSound.play();
+                enemy.hp = data.hp;
+                this.tweens.add({ targets: enemy, alpha: 0.5, duration: 50, yoyo: true });
+                if (enemy.hp <= 0) {
+                    this.destroyEnemy(enemy.id);
+                }
+            }
+        });
+
+        this.socket.on("enemyDestroyed", (id) => {
+            this.destroyEnemy(id);
+        });
+    }
+
+    destroyEnemy(id) {
+        if (this.enemies[id]) {
+            this.enemies[id].destroy();
+            delete this.enemies[id];
+        }
+    }
+
+    checkBulletCollision(bullet) {
+        Object.values(this.enemies).forEach(enemy => {
+            if (Phaser.Math.Distance.Between(bullet.x, bullet.y, enemy.x, enemy.y) < 30) {
+                this.socket.emit("enemyHit", { id: enemy.id, damage: bullet.damage });
+                bullet.destroy();
+                this.bullets = this.bullets.filter(b => b !== bullet);
+            }
+        });
+    }
+
+    checkXpCollection() {
+        this.xpOrbs.forEach(orb => {
+            if (Phaser.Math.Distance.Between(this.me.x, this.me.y, orb.x, orb.y) < 40) {
+                this.socket.emit("collectXpOrb", orb.id);
+                orb.destroy();
+            }
+        });
+    }
+
+    updateUI() {
+        this.hpText.setText(`HP: ${this.playerStats.hp}/${this.playerStats.maxHp}`);
+        this.levelText.setText(`Level: ${this.playerStats.level}`);
+        this.xpText.setText(`XP: ${this.playerStats.xp}`);
+        this.scoreText.setText(`Score: ${this.playerStats.score}`);
+        this.weaponText.setText(`Weapon: ${this.weapons[this.currentWeapon].name}`);
+    }
+}
+
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
+    scene: [GameScene]
+};
+
+new Phaser.Game(config);
