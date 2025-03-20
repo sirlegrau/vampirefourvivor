@@ -620,4 +620,72 @@ class GameScene extends Phaser.Scene {
     }
 }
 
-export default GameScene;
+// Menu Scene
+class MenuScene extends Phaser.Scene {
+    constructor() {
+        super("MenuScene");
+    }
+
+    preload() {
+        this.load.image("background", "assets/background.png");
+    }
+
+    create() {
+        // Add background
+        this.add.image(400, 300, "background");
+
+        // Title
+        this.add.text(400, 150, "VAMPIRE SURVIVOR", {
+            fontSize: '48px',
+            fill: '#ff0000',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 6
+        }).setOrigin(0.5);
+
+        // Start button
+        const startButton = this.add.rectangle(400, 300, 200, 60, 0x3333aa)
+            .setInteractive();
+
+        const startText = this.add.text(400, 300, "START GAME", {
+            fontSize: '24px',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+
+        startButton.on('pointerover', () => startButton.setFillStyle(0x5555cc));
+        startButton.on('pointerout', () => startButton.setFillStyle(0x3333aa));
+        startButton.on('pointerup', () => this.scene.start("GameScene"));
+
+        // Controls
+        this.add.text(400, 400, "How to play:", {
+            fontSize: '18px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        this.add.text(400, 450, "Arrow Keys to move\nClick to shoot\nSurvive as long as possible!", {
+            fontSize: '16px',
+            fill: '#ffffff',
+            align: 'center'
+        }).setOrigin(0.5);
+    }
+}
+
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    pixelArt: true,
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 0 },
+            debug: false
+        }
+    },
+    scene: [MenuScene, GameScene]
+};
+
+window.onload = () => {
+    new Phaser.Game(config);
+}
