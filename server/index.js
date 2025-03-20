@@ -1,7 +1,7 @@
 const { createServer } = require("http");
 const { Server } = require("socket.io");
+const config = require("./gameConfig");
 
-const PORT = process.env.PORT || 3000;
 const httpServer = createServer();
 
 const io = new Server(httpServer, {
@@ -21,40 +21,12 @@ let gameLoopInterval;
 let waveInterval;
 let currentWave = 0;
 
-const initialPlayerStats = {
-    x: 800,
-    y: 600,
-    hp: 5,
-    maxHp: 5,
-    xp: 0,
-    level: 1,
-    score: 0,
-    weaponLevel: 1,
-    damageMultiplier: 1,
-    cooldownReduction: 1,
-    speedMultiplier: 1,
-    bulletsPerShot: 1
-};
-
-// Basic enemy types
-const enemyStats = {
-    basic: { hp: 3, speed: 1, points: 10, xpValue: 5 },
-    fast: { hp: 2, speed: 2, points: 15, xpValue: 7 },
-    tank: { hp: 8, speed: 0.5, points: 20, xpValue: 10 },
-    boss: { hp: 30, speed: 0.7, points: 100, xpValue: 50 }
-};
-
-// Calculate required XP for a level
-function getRequiredXp(level) {
-    return Math.floor(level * 80);
-}
-
 // Check if player levels up and handle it
 function checkLevelUp(playerId) {
     const player = players[playerId];
     if (!player) return false;
 
-    const requiredXp = getRequiredXp(player.level);
+    const requiredXp = config.XP.getRequiredXp(player.level);
     if (player.xp >= requiredXp) {
         player.level += 1;
         io.emit("updateXP", {
@@ -74,7 +46,7 @@ function startGameLoop() {
         moveEnemies();
         moveBullets();
         checkCollisions();
-    }, 33);
+    }, config.SIMULATION.tickRate);
     startWaveSystem();
 }
 
@@ -85,22 +57,16 @@ function startWaveSystem() {
         currentWave++;
         console.log(`🌊 Starting wave ${currentWave}`);
         spawnWave();
-    }, 25000);
+    }, config.WAVES.timeBetweenWaves);
 }
 
 function spawnWave() {
-    const baseEnemies = 5 + Math.floor(currentWave * 2);
-
-    let enemyCount = {
-        basic: Math.floor(baseEnemies * 0.5),
-        fast: Math.floor(baseEnemies * 0.2),
-        tank: Math.floor(baseEnemies * 0.1),
-        boss: currentWave % 4 === 0 ? 1 : 0
-    };
+    const baseEnemies = config.WAVES.getBaseEnemiesForWave(currentWave);
+    const enemyCount = config.WAVES.getWaveComposition(currentWave, baseEnemies);
 
     Object.entries(enemyCount).forEach(([type, count]) => {
         for (let i = 0; i < count; i++) {
-            setTimeout(() => spawnEnemy(type), i * 800);
+            setTimeout(() => spawnEnemy(type), i * config.WAVES.enemySpawnDelay);
         }
     });
 
@@ -108,22 +74,23 @@ function spawnWave() {
 }
 
 function spawnEnemy(type = "basic") {
+    const offset = config.WORLD.spawnBorderOffset;
     const spawnPositions = [
-        { x: Math.random() * 1600, y: -50 },
-        { x: 1650, y: Math.random() * 1200 },
-        { x: Math.random() * 1600, y: 1250 },
-        { x: -50, y: Math.random() * 1200 }
+        { x: Math.random() * config.WORLD.width, y: -offset },
+        { x: config.WORLD.width + offset, y: Math.random() * config.WORLD.height },
+        { x: Math.random() * config.WORLD.width, y: config.WORLD.height + offset },
+        { x: -offset, y: Math.random() * config.WORLD.height }
     ];
     let { x, y } = spawnPositions[Math.floor(Math.random() * 4)];
     const id = `enemy-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    const stats = enemyStats[type];
+    const stats = config.ENEMIES[type];
 
     const enemy = {
         id,
         x,
         y,
         type,
-        hp: stats.hp * (1 + currentWave * 0.1),
+        hp: stats.hp * (1 + currentWave * config.WAVES.hpScalingPerWave),
         speed: stats.speed,
         points: stats.points,
         xpValue: stats.xpValue
@@ -158,7 +125,11 @@ function moveBullets() {
         bullet.y += bullet.velocityY;
 
         // Remove bullets that are out of bounds
-        if (bullet.x < -50 || bullet.x > 1650 || bullet.y < -50 || bullet.y > 1250) {
+        const offset = config.WORLD.spawnBorderOffset;
+        if (bullet.x < -offset ||
+            bullet.x > config.WORLD.width + offset ||
+            bullet.y < -offset ||
+            bullet.y > config.WORLD.height + offset) {
             io.emit("bulletDestroyed", bullet.id);
             return false;
         }
@@ -172,7 +143,7 @@ function checkCollisions() {
     // Check bullet-enemy collisions
     bullets.forEach(bullet => {
         enemies.forEach(enemy => {
-            if (Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < 30) {
+            if (Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < config.SIMULATION.bulletHitRadius) {
                 const player = players[bullet.playerId];
                 let damage = bullet.damage;
 
@@ -197,7 +168,7 @@ function checkCollisions() {
     // Check player-enemy collisions
     Object.entries(players).forEach(([playerId, player]) => {
         enemies.forEach(enemy => {
-            if (Math.hypot(player.x - enemy.x, player.y - enemy.y) < 40) {
+            if (Math.hypot(player.x - enemy.x, player.y - enemy.y) < config.SIMULATION.playerEnemyCollisionRadius) {
                 player.hp -= 1;
                 io.emit("updateHP", { id: playerId, hp: player.hp });
 
@@ -219,7 +190,7 @@ function checkCollisions() {
     // Check player-xpOrb collisions
     Object.entries(players).forEach(([playerId, player]) => {
         xpOrbs = xpOrbs.filter(orb => {
-            if (Math.hypot(player.x - orb.x, player.y - orb.y) < 50) {
+            if (Math.hypot(player.x - orb.x, player.y - orb.y) < config.XP.orbCollectionRadius) {
                 player.xp += orb.value;
 
                 // Check for level up
@@ -267,7 +238,7 @@ function spawnXpOrb(x, y, value) {
 io.on("connection", (socket) => {
     console.log(`🟢 Player connected: ${socket.id}`);
 
-    players[socket.id] = { ...initialPlayerStats };
+    players[socket.id] = { ...config.PLAYER.initialStats };
 
     if (!gameInProgress) {
         gameInProgress = true;
@@ -297,8 +268,8 @@ io.on("connection", (socket) => {
             id: `bullet-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             x,
             y,
-            velocityX: Math.cos(angle) * 10,
-            velocityY: Math.sin(angle) * 10,
+            velocityX: Math.cos(angle) * config.SIMULATION.bulletSpeed,
+            velocityY: Math.sin(angle) * config.SIMULATION.bulletSpeed,
             damage: effectiveDamage,
             playerId: socket.id
         };
@@ -350,24 +321,30 @@ io.on("connection", (socket) => {
         const player = players[socket.id];
         if (!player) return;
 
+        const upgradeOptions = config.PLAYER.upgradeOptions;
+
         switch (upgradeType) {
             case "hp":
-                player.maxHp += 3;
-                player.hp = player.maxHp;
+                player.maxHp += upgradeOptions.hp.maxHpIncrease;
+                if (upgradeOptions.hp.fullHeal) {
+                    player.hp = player.maxHp;
+                }
                 io.emit("updateHP", { id: socket.id, hp: player.hp });
                 break;
             case "damage":
-                player.damageMultiplier += 0.5;
+                player.damageMultiplier += upgradeOptions.damage.multiplierIncrease;
                 break;
             case "cooldown":
-                player.cooldownReduction -= 0.3;
-                if (player.cooldownReduction < 0.3) player.cooldownReduction = 0.3;
+                player.cooldownReduction -= upgradeOptions.cooldown.reductionIncrease;
+                if (player.cooldownReduction < upgradeOptions.cooldown.minimumValue) {
+                    player.cooldownReduction = upgradeOptions.cooldown.minimumValue;
+                }
                 break;
             case "speed":
-                player.speedMultiplier += 0.3;
+                player.speedMultiplier += upgradeOptions.speed.multiplierIncrease;
                 break;
             case "multishot":
-                player.bulletsPerShot = (player.bulletsPerShot || 1) + 1;
+                player.bulletsPerShot += upgradeOptions.multishot.bulletsIncrease;
                 break;
         }
 
@@ -403,6 +380,6 @@ io.on("connection", (socket) => {
     });
 });
 
-httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+httpServer.listen(config.Server.port, "0.0.0.0", () => {
+    console.log(`✅ Server running on http://0.0.0.0:${config.Server.port}`);
 });
