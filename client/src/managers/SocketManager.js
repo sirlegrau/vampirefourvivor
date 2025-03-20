@@ -253,30 +253,11 @@ export default class SocketManager {
             this.scene.addXpOrb(data.id, data.x, data.y, data.value);
         });
 
-        this.socket.on("xpOrbCollected", (data) => {
-            // Changed from just passing the id to passing the full data object
-            const orb = this.scene.xpOrbs.find(o => o.id === data.id);
+        this.socket.on("xpOrbCollected", (id) => {
+            const orb = this.scene.xpOrbs.find(o => o.id === id);
             if (orb) {
-                // Add a visual effect before destroying
-                this.scene.tweens.add({
-                    targets: orb,
-                    scale: orb.scale * 1.5,
-                    alpha: 0,
-                    duration: 200,
-                    onComplete: () => {
-                        orb.destroy();
-                        this.scene.xpOrbs = this.scene.xpOrbs.filter(o => o.id !== data.id);
-                    }
-                });
-
-                // Play sound if this player collected it
-                if (data.playerId === this.socket.id) {
-                    // Make sure you have an XP collect sound loaded in your game
-                    /*
-                    if (this.scene.collectSound) {
-                        this.scene.collectSound.play({ volume: 0.3 });
-                    }*/
-                }
+                orb.destroy();
+                this.scene.xpOrbs = this.scene.xpOrbs.filter(o => o.id !== id);
             }
         });
 
