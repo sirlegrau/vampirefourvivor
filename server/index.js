@@ -278,7 +278,7 @@ io.on("connection", (socket) => {
     socket.emit("currentXpOrbs", xpOrbs);
     socket.broadcast.emit("newPlayer", { id: socket.id, ...players[socket.id] });
 
-    socket.on("playerMovement", ({ x, y }) => {
+    socket.on("playerMove", ({ x, y }) => {
         if (players[socket.id]) {
             players[socket.id].x = x;
             players[socket.id].y = y;
