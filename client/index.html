@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FLOROTINGUS HUNTER XXX DELUXE PLUS EDITION</title>
+  <title>Vampire Fourvivor</title>
+  <link rel="stylesheet" href="src/style.css">
   <style>
     body {
       margin: 0;
@@ -23,6 +24,13 @@
       align-items: center;
     }
 
+    .game-title {
+      font-size: 3em;
+      margin-bottom: 0.5em;
+      color: #ff3333;
+      text-shadow: 0 0 10px #ff0000;
+    }
+
     .game-overlay {
       position: absolute;
       top: 0;
@@ -33,14 +41,11 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      background-color: rgba(0, 0, 0, 0.8);
+      background-color: rgba(0, 0, 0, 0.7);
       z-index: 100;
-      transition: opacity 0.5s;
-    }
-
-    .game-overlay.hidden {
-      opacity: 0;
       pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
     }
 
     .game-overlay-content {
@@ -48,35 +53,25 @@
       color: #fff;
     }
 
-    .game-title {
+    .game-overlay-title {
       font-size: 3em;
       color: #ff3333;
-      text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000;
-      text-transform: uppercase;
-      text-align: center;
-      line-height: 1.2;
       margin-bottom: 1em;
-      letter-spacing: 2px;
     }
 
     .game-overlay-button {
       padding: 0.8em 2em;
-      font-size: 1.5em;
+      font-size: 1.2em;
       background-color: #ff3333;
       color: #fff;
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      transition: background-color 0.3s, transform 0.2s;
-      text-transform: uppercase;
-      font-weight: bold;
-      letter-spacing: 2px;
-      box-shadow: 0 0 15px #ff0000;
+      transition: background-color 0.3s;
     }
 
     .game-overlay-button:hover {
       background-color: #cc0000;
-      transform: scale(1.05);
     }
 
     .game-instructions {
@@ -89,6 +84,10 @@
 
     .game-instructions h2 {
       color: #ff3333;
+    }
+
+    .game-instructions ul {
+      text-align: left;
     }
 
     .game-controls {
@@ -113,7 +112,7 @@
 </head>
 <body>
 <div id="game-container">
-  <h1 class="game-title">FLOROTINGUS HUNTER XXX<br>DELUXE PLUS EDITION</h1>
+  <h1 class="game-title">Vampire Fourvivor</h1>
   <div id="game-ui">
     <div class="game-players">Players Online: <span id="player-count">0</span></div>
   </div>
@@ -138,25 +137,28 @@
 
 <div class="game-overlay" id="main-menu">
   <div class="game-overlay-content">
-    <h1 class="game-title">FLOROTINGUS HUNTER XXX<br>DELUXE PLUS EDITION</h1>
-    <button class="game-overlay-button" id="start-button">START GAME</button>
+    <h1 class="game-overlay-title">Vampire Fourvivor</h1>
+    <p>Fight against endless waves of enemies!</p>
+    <button class="game-overlay-button" id="start-button">Start Game</button>
   </div>
 </div>
 
 <script type="module" src="src/main.js"></script>
-<script type="module">
-  // Import Socket.io and initialize connection
-  import { io } from "socket.io-client";
+<script>
+  // Show main menu on load
+  import {io} from "socket.io-client";
 
   document.addEventListener('DOMContentLoaded', () => {
     const mainMenu = document.getElementById('main-menu');
     const startButton = document.getElementById('start-button');
 
+    mainMenu.classList.add('active');
+
     startButton.addEventListener('click', () => {
-      mainMenu.classList.add('hidden');
+      mainMenu.classList.remove('active');
     });
 
-    // Initialize socket connection
+    // Update player count
     const socket = io("https://vampirefourvivor.onrender.com", {
       transports: ["websocket", "polling"],
       withCredentials: true
