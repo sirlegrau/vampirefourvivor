@@ -29,6 +29,33 @@ function checkLevelUp(playerId) {
     const requiredXp = config.XP.getRequiredXp(player.level);
     if (player.xp >= requiredXp) {
         player.level += 1;
+
+        // ADD THIS CODE HERE - Generate random upgrade options
+        const availableUpgrades = [];
+        Object.entries(config.PLAYER.upgradeOptions).forEach(([type, data]) => {
+            if (Math.random() < data.chance) {
+                availableUpgrades.push(type);
+            }
+        });
+
+        // Ensure we have enough options even if RNG was unfavorable
+        while (availableUpgrades.length < config.PLAYER.upgradeChoices) {
+            const allTypes = Object.keys(config.PLAYER.upgradeOptions);
+            const randomType = allTypes[Math.floor(Math.random() * allTypes.length)];
+            if (!availableUpgrades.includes(randomType)) {
+                availableUpgrades.push(randomType);
+            }
+        }
+
+        // Shuffle and get random choices
+        const upgrades = availableUpgrades
+            .sort(() => 0.5 - Math.random())
+            .slice(0, config.PLAYER.upgradeChoices);
+
+        // Send these choices to the player
+        io.to(playerId).emit("upgradeOptions", upgrades);
+
+        // Original code continues
         io.emit("updateXP", {
             id: playerId,
             xp: player.xp,
@@ -62,7 +89,8 @@ function startWaveSystem() {
 
 function spawnWave() {
     const baseEnemies = config.WAVES.getBaseEnemiesForWave(currentWave);
-    const enemyCount = config.WAVES.getWaveComposition(currentWave, baseEnemies);
+    const activePlayerCount = Object.keys(players).length;
+    const enemyCount = config.WAVES.getWaveComposition(currentWave, baseEnemies, activePlayerCount);
 
     Object.entries(enemyCount).forEach(([type, count]) => {
         for (let i = 0; i < count; i++) {
