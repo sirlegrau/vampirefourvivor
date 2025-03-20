@@ -55,7 +55,6 @@ class GameScene extends Phaser.Scene {
 
         // Set up shooting timer
         this.lastShotTime = 0;
-        this.shootBullet();
     }
 
     createUI() {
@@ -360,20 +359,7 @@ class GameScene extends Phaser.Scene {
         this.xpOrbs.push(orb);
         return orb;
     }
-    findClosestEnemy() {
-        let closestEnemy = null;
-        let closestDistance = Infinity;
 
-        Object.values(this.enemies).forEach(enemy => {
-            const distance = Phaser.Math.Distance.Between(this.me.x, this.me.y, enemy.x, enemy.y);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestEnemy = enemy;
-            }
-        });
-
-        return closestEnemy;
-    }
     shootBullet() {
         if (!this.me || this.gameOver) return;
 
@@ -386,7 +372,7 @@ class GameScene extends Phaser.Scene {
         this.shootSound.play({ volume: 0.2 });
 
         // Get direction to mouse
-        const pointer = this.findClosestEnemy();
+        const pointer = this.input.activePointer;
         const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
 
         // Calculate angle
@@ -399,7 +385,6 @@ class GameScene extends Phaser.Scene {
             angle: angle,
             damage: 1
         });
-        this.shootBullet();
     }
 
     levelUp() {
@@ -582,7 +567,10 @@ class GameScene extends Phaser.Scene {
             this.socket.emit("playerMove", { x: this.me.x, y: this.me.y });
         }
 
-
+        // Shooting
+        if (this.input.activePointer.isDown) {
+            this.shootBullet();
+        }
 
         // Update enemy HP text positions
         Object.values(this.enemies).forEach(enemy => {
