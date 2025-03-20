@@ -18,8 +18,6 @@ export default class GameScene extends Phaser.Scene {
         this.gameOver = false;
         this.autoShootTimer = 0;
         this.lastShotTime = 0;
-        this.targetPosX = 0;
-        this.targetPosY = 0;
         this.playerName = localStorage.getItem("playerName") || "Player";
     }
 
@@ -51,24 +49,6 @@ export default class GameScene extends Phaser.Scene {
             a: Phaser.Input.Keyboard.KeyCodes.A,
             s: Phaser.Input.Keyboard.KeyCodes.S,
             d: Phaser.Input.Keyboard.KeyCodes.D
-        });
-
-        // Mouse input for aiming/shooting
-        this.input.on('pointermove', (pointer) => {
-            if (this.me) {
-                // Convert screen position to world position
-                const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-                this.targetPosX = worldPoint.x;
-                this.targetPosY = worldPoint.y;
-            }
-        });
-
-        this.input.on('pointerdown', () => {
-            this.isMouseDown = true;
-        });
-
-        this.input.on('pointerup', () => {
-            this.isMouseDown = false;
         });
 
         // Set up socket connection
@@ -162,7 +142,7 @@ export default class GameScene extends Phaser.Scene {
         if (this.gameOver) return;
 
         this.handlePlayerMovement();
-        this.handleShooting(time);
+        this.handleAutoShooting(time);
         this.updateEnemyPositions();
     }
 
@@ -224,26 +204,51 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    handleShooting(time) {
+    findClosestEnemy() {
+        if (!this.me || !Object.keys(this.enemies).length) return null;
+
+        let closestEnemy = null;
+        let closestDistance = Infinity;
+
+        Object.values(this.enemies).forEach(enemy => {
+            const distance = Phaser.Math.Distance.Between(
+                this.me.x, this.me.y,
+                enemy.x, enemy.y
+            );
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestEnemy = enemy;
+            }
+        });
+
+        return closestEnemy;
+    }
+
+    handleAutoShooting(time) {
         if (!this.me || this.gameOver) return;
 
         // Calculate cooldown with player's cooldown reduction
         const baseCooldown = 500; // 500ms between shots
         const cooldown = baseCooldown * (this.playerStats.cooldownReduction || 1);
 
-        // Auto-shoot when mouse is down
-        if (this.isMouseDown && time > this.lastShotTime + cooldown) {
-            this.shoot();
-            this.lastShotTime = time;
+        // Auto-shoot at the closest enemy if cooldown has elapsed
+        if (time > this.lastShotTime + cooldown) {
+            const closestEnemy = this.findClosestEnemy();
+
+            if (closestEnemy) {
+                this.shootAtTarget(closestEnemy.x, closestEnemy.y);
+                this.lastShotTime = time;
+            }
         }
     }
 
-    shoot() {
+    shootAtTarget(targetX, targetY) {
         if (!this.me || this.gameOver) return;
 
-        // Calculate direction to target (mouse position)
-        const dx = this.targetPosX - this.me.x;
-        const dy = this.targetPosY - this.me.y;
+        // Calculate direction to target
+        const dx = targetX - this.me.x;
+        const dy = targetY - this.me.y;
 
         // Normalize direction
         const length = Math.sqrt(dx * dx + dy * dy);
@@ -253,13 +258,15 @@ export default class GameScene extends Phaser.Scene {
         // Play shoot sound
         this.shootSound.play({ volume: 0.2 });
 
+        // Calculate angle for server (in radians)
+        const angle = Math.atan2(normalizedDy, normalizedDx);
+
         // Send shot to server
         this.socket.emit("playerShoot", {
             x: this.me.x,
             y: this.me.y,
-            dirX: normalizedDx,
-            dirY: normalizedDy,
-            bulletsPerShot: this.bulletsPerShot
+            angle: angle,
+            damage: GameConfig.PLAYER.baseDamage || 1 // Use base damage from config
         });
     }
 
