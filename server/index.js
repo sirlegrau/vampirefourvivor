@@ -233,7 +233,8 @@ function checkCollisions() {
                     });
                 }
 
-                io.emit("xpOrbCollected", orb.id);
+                // Include playerId in the emission
+                io.emit("xpOrbCollected", { id: orb.id, playerId: playerId });
                 return false;
             }
             return true;
@@ -318,7 +319,6 @@ io.on("connection", (socket) => {
         }
     });
 
-    // Handle XP orb collection
     socket.on("collectXpOrb", (orbId) => {
         const orbIndex = xpOrbs.findIndex(o => o.id === orbId);
 
@@ -340,7 +340,7 @@ io.on("connection", (socket) => {
 
             // Remove the orb
             xpOrbs.splice(orbIndex, 1);
-            io.emit("xpOrbCollected", orbId);
+            io.emit("xpOrbCollected", { id: orbId, playerId: socket.id });
         }
     });
 
