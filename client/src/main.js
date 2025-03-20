@@ -6,16 +6,13 @@ class GameScene extends Phaser.Scene {
         super("GameScene");
         this.players = {};
         this.enemies = {};
-        this.bullets = [];
+        this.bullets = {};
+        this.xpOrbs = [];
         this.playerStats = { hp: 5, maxHp: 5, xp: 0, level: 1, score: 0 };
-        this.weapons = [
-            { name: "Basic Shot", damage: 1, cooldown: 1000, projectiles: 1, speed: 600 },
-            { name: "Double Shot", damage: 1, cooldown: 1200, projectiles: 2, speed: 600 },
-            { name: "Triple Shot", damage: 1, cooldown: 1500, projectiles: 3, speed: 600 }
-        ];
         this.currentWeapon = 0;
         this.canShoot = true;
         this.gameOver = false;
+        this.socketUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
     }
 
     preload() {
@@ -40,8 +37,10 @@ class GameScene extends Phaser.Scene {
         // Create UI elements
         this.createUI();
 
-        // Set up socket connection
-        this.setupSocketConnection();
+        // Initialize sounds
+        this.shootSound = this.sound.add("shoot");
+        this.hitSound = this.sound.add("hit");
+        this.levelupSound = this.sound.add("levelup");
 
         // Set up input
         this.cursors = this.input.keyboard.createCursorKeys();
@@ -51,52 +50,37 @@ class GameScene extends Phaser.Scene {
             three: Phaser.Input.Keyboard.KeyCodes.THREE
         });
 
-        // Initialize sounds
-        this.shootSound = this.sound.add("shoot");
-        this.hitSound = this.sound.add("hit");
-        this.levelupSound = this.sound.add("levelup");
+        // Set up socket connection
+        this.setupSocketConnection();
 
-        // Set up automatic shooting
-        this.setupWeaponSystem();
+        // Set up shooting timer
+        this.lastShotTime = 0;
     }
 
     createUI() {
         this.uiGroup = this.add.group();
 
         // Health bar
-        this.hpBar = this.add.graphics();
-        this.hpText = this.add.text(20, 20, "HP: 5/5", { fontSize: '16px', fill: '#ffffff' });
+        this.hpBar = this.add.graphics().setScrollFactor(0);
+        this.hpText = this.add.text(20, 20, "HP: 5/5", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
 
         // Level and XP
-        this.levelText = this.add.text(20, 50, "Level: 1", { fontSize: '16px', fill: '#ffffff' });
-        this.xpBar = this.add.graphics();
-        this.xpText = this.add.text(20, 80, "XP: 0/100", { fontSize: '16px', fill: '#ffffff' });
+        this.levelText = this.add.text(20, 50, "Level: 1", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
+        this.xpBar = this.add.graphics().setScrollFactor(0);
+        this.xpText = this.add.text(20, 80, "XP: 0/80", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
 
         // Score
-        this.scoreText = this.add.text(20, 110, "Score: 0", { fontSize: '16px', fill: '#ffffff' });
+        this.scoreText = this.add.text(20, 110, "Score: 0", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
 
-        // Weapon display
-        this.weaponText = this.add.text(20, 140, "Weapon: Basic Shot", { fontSize: '16px', fill: '#ffffff' });
+        // Current wave
+        this.waveText = this.add.text(20, 140, "Wave: 0", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
 
-        // Add all UI elements to group
-        this.uiGroup.add(this.hpText);
-        this.uiGroup.add(this.levelText);
-        this.uiGroup.add(this.xpText);
-        this.uiGroup.add(this.scoreText);
-        this.uiGroup.add(this.weaponText);
-
-        // Make UI stick to camera by setting setScrollFactor on each element individually
-        this.hpBar.setScrollFactor(0);
-        this.hpText.setScrollFactor(0);
-        this.levelText.setScrollFactor(0);
-        this.xpBar.setScrollFactor(0);
-        this.xpText.setScrollFactor(0);
-        this.scoreText.setScrollFactor(0);
-        this.weaponText.setScrollFactor(0);
+        // Stats
+        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
     }
 
     setupSocketConnection() {
-        this.socket = io("https://vampirefourvivor.onrender.com");
+        this.socket = io(this.socketUrl);
 
         this.socket.on("currentPlayers", (players) => {
             Object.keys(players).forEach((id) => {
@@ -107,7 +91,10 @@ class GameScene extends Phaser.Scene {
                         maxHp: playerData.maxHp,
                         xp: playerData.xp,
                         level: playerData.level,
-                        score: playerData.score || 0
+                        score: playerData.score || 0,
+                        damageMultiplier: playerData.damageMultiplier || 1,
+                        cooldownReduction: playerData.cooldownReduction || 1,
+                        speedMultiplier: playerData.speedMultiplier || 1
                     };
                     this.me = this.addPlayer(id, playerData.x, playerData.y, true);
                 } else {
@@ -151,8 +138,10 @@ class GameScene extends Phaser.Scene {
         this.socket.on("enemyHit", (data) => {
             const enemy = this.enemies[data.enemyId];
             if (enemy) {
-                // Create hit effect
-                this.hitSound.play();
+                enemy.hp = data.hp;
+                if (enemy.hpText) enemy.hpText.setText(`HP: ${Math.ceil(enemy.hp)}`);
+
+                this.hitSound.play({ volume: 0.3 });
                 this.tweens.add({
                     targets: enemy,
                     alpha: 0.5,
@@ -164,27 +153,41 @@ class GameScene extends Phaser.Scene {
 
         this.socket.on("enemyKilled", (data) => {
             if (this.enemies[data.enemyId]) {
-                // Create death animation
                 const enemy = this.enemies[data.enemyId];
+
                 this.tweens.add({
                     targets: enemy,
                     alpha: 0,
                     scale: 1.5,
                     duration: 200,
                     onComplete: () => {
+                        if (enemy.hpText) enemy.hpText.destroy();
                         enemy.destroy();
                         delete this.enemies[data.enemyId];
                     }
                 });
 
-                // Spawn XP orb
-                this.createXpOrb(enemy.x, enemy.y);
-
-                // Update score if this player killed the enemy
                 if (data.killerId === this.socket.id) {
-                    this.playerStats.score += data.points || 10;
+                    this.playerStats.score += data.points;
                     this.updateUI();
                 }
+            }
+        });
+
+        this.socket.on("bulletCreated", (data) => {
+            this.addBullet(data.id, data.x, data.y, data.velocityX, data.velocityY);
+        });
+
+        this.socket.on("bulletMoved", (data) => {
+            if (this.bullets[data.id]) {
+                this.bullets[data.id].setPosition(data.x, data.y);
+            }
+        });
+
+        this.socket.on("bulletDestroyed", (id) => {
+            if (this.bullets[id]) {
+                this.bullets[id].destroy();
+                delete this.bullets[id];
             }
         });
 
@@ -192,9 +195,11 @@ class GameScene extends Phaser.Scene {
             if (data.id === this.socket.id) {
                 this.playerStats.xp = data.xp;
                 this.playerStats.level = data.level;
+
                 if (data.leveledUp) {
                     this.levelUp();
                 }
+
                 this.updateUI();
             }
         });
@@ -204,7 +209,6 @@ class GameScene extends Phaser.Scene {
                 this.playerStats.hp = data.hp;
                 this.updateUI();
 
-                // Show damage effect on player
                 this.tweens.add({
                     targets: this.me,
                     alpha: 0.5,
@@ -212,7 +216,6 @@ class GameScene extends Phaser.Scene {
                     yoyo: true
                 });
 
-                // Check for game over
                 if (this.playerStats.hp <= 0 && !this.gameOver) {
                     this.gameOver = true;
                     this.showGameOver();
@@ -220,34 +223,89 @@ class GameScene extends Phaser.Scene {
             }
         });
 
+        this.socket.on("updateScore", (data) => {
+            if (data.id === this.socket.id) {
+                this.playerStats.score = data.score;
+                this.updateUI();
+            }
+        });
+
         this.socket.on("spawnXpOrb", (data) => {
-            this.createXpOrb(data.x, data.y, data.value, data.id);
+            this.addXpOrb(data.id, data.x, data.y, data.value);
         });
 
         this.socket.on("xpOrbCollected", (id) => {
-            // Remove XP orb if it exists
-            const orb = this.xpOrbs ? this.xpOrbs.find(o => o.id === id) : null;
+            const orb = this.xpOrbs.find(o => o.id === id);
             if (orb) {
                 orb.destroy();
                 this.xpOrbs = this.xpOrbs.filter(o => o.id !== id);
             }
         });
-    }
 
-    setupWeaponSystem() {
-        // Set up shooting timer based on weapon cooldown
-        this.shootTimer = this.time.addEvent({
-            delay: this.weapons[this.currentWeapon].cooldown,
-            callback: this.shootBullet,
-            callbackScope: this,
-            loop: true
+        this.socket.on("waveStarted", (data) => {
+            this.currentWave = data.wave;
+            this.updateUI();
+
+            const waveText = this.add.text(
+                this.cameras.main.width / 2,
+                100,
+                `WAVE ${data.wave}`,
+                { fontSize: '32px', fill: '#ffffff', stroke: '#000000', strokeThickness: 4 }
+            );
+            waveText.setScrollFactor(0);
+            waveText.setOrigin(0.5);
+
+            this.tweens.add({
+                targets: waveText,
+                alpha: 0,
+                y: 80,
+                duration: 2000,
+                onComplete: () => waveText.destroy()
+            });
+        });
+
+        this.socket.on("playerUpgraded", (data) => {
+            if (data.id === this.socket.id) {
+                this.playerStats.maxHp = data.stats.maxHp;
+                this.playerStats.hp = data.stats.hp;
+                this.playerStats.damageMultiplier = data.stats.damageMultiplier;
+                this.playerStats.cooldownReduction = data.stats.cooldownReduction;
+                this.playerStats.speedMultiplier = data.stats.speedMultiplier;
+                this.updateUI();
+            }
+        });
+
+        this.socket.on("currentXpOrbs", (orbs) => {
+            orbs.forEach(orb => this.addXpOrb(orb.id, orb.x, orb.y, orb.value));
+        });
+
+        this.socket.on("playerDied", (id) => {
+            if (id === this.socket.id && !this.gameOver) {
+                this.gameOver = true;
+                this.showGameOver();
+            }
         });
     }
 
+    addPlayer(id, x, y, isMe = false) {
+        const player = this.add.image(x, y, "player");
+
+        if (isMe) {
+            player.setTint(0x00FF00);
+            this.cameras.main.startFollow(player, true, 0.05, 0.05);
+        } else {
+            player.setTint(0xFFFF00);
+        }
+
+        this.players[id] = player;
+        return player;
+    }
+
     addEnemy(id, x, y, type = 'basic', hp = 3) {
+        if (this.enemies[id]) return;
+
         const enemy = this.add.image(x, y, "enemy");
 
-        // Visual differences based on enemy type
         switch(type) {
             case 'fast':
                 enemy.setTint(0xFF9999);
@@ -258,46 +316,38 @@ class GameScene extends Phaser.Scene {
                 enemy.setScale(1.3);
                 break;
             case 'boss':
-                enemy.setTint(0xFFFF99);
+                enemy.setTint(0xFF0000);
                 enemy.setScale(2);
                 break;
             default:
                 enemy.setTint(0xFFFFFF);
         }
 
-        // Add HP text above enemy
-        enemy.hpText = this.add.text(x, y - 20, `HP: ${hp}`, { fontSize: '12px', fill: '#ffffff' });
+        enemy.hpText = this.add.text(x, y - 20, `HP: ${Math.ceil(hp)}`, {
+            fontSize: '12px',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+
         enemy.type = type;
         enemy.hp = hp;
         this.enemies[id] = enemy;
         return enemy;
     }
 
-    addPlayer(id, x, y, isMe = false) {
-        const player = this.add.image(x, y, "player");
-
-        if (isMe) {
-            player.setTint(0x00FF00); // Green tint for current player
-            // Set up camera to follow player
-            this.cameras.main.startFollow(player, true, 0.05, 0.05);
-        } else {
-            player.setTint(0xFFFF00); // Yellow tint for other players
-        }
-
-        this.players[id] = player;
-        return player;
+    addBullet(id, x, y, velocityX, velocityY) {
+        const bullet = this.add.image(x, y, "bullet");
+        this.bullets[id] = bullet;
+        return bullet;
     }
 
-    createXpOrb(x, y, value = 5, id = null) {
-        if (!this.xpOrbs) this.xpOrbs = [];
-
-        const orbId = id || `orb-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    addXpOrb(id, x, y, value) {
         const orb = this.add.image(x, y, "experience");
         orb.setScale(0.5);
-        orb.id = orbId;
+        orb.id = id;
         orb.value = value;
 
-        // Add attractive animation
         this.tweens.add({
             targets: orb,
             scale: 0.6,
@@ -307,106 +357,42 @@ class GameScene extends Phaser.Scene {
         });
 
         this.xpOrbs.push(orb);
-
-        // Emit to server only if we're creating a new orb
-        if (!id) {
-            this.socket.emit("spawnXpOrb", { x, y, value, id: orbId });
-        }
-
         return orb;
     }
 
     shootBullet() {
-        if (!this.me || !this.canShoot || this.gameOver) return;
+        if (!this.me || this.gameOver) return;
 
-        const weapon = this.weapons[this.currentWeapon];
+        const now = this.time.now;
+        const cooldown = 1000 * this.playerStats.cooldownReduction;
 
-        // Play sound
-        this.shootSound.play();
+        if (now - this.lastShotTime < cooldown) return;
 
-        // Temporarily disable shooting
-        this.canShoot = false;
-        this.time.delayedCall(weapon.cooldown, () => {
-            this.canShoot = true;
+        this.lastShotTime = now;
+        this.shootSound.play({ volume: 0.2 });
+
+        // Get direction to mouse
+        const pointer = this.input.activePointer;
+        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+
+        // Calculate angle
+        const angle = Phaser.Math.Angle.Between(this.me.x, this.me.y, worldPoint.x, worldPoint.y);
+
+        // Send to server
+        this.socket.emit("playerShoot", {
+            x: this.me.x,
+            y: this.me.y,
+            angle: angle,
+            damage: 1
         });
-
-        // Create bullets based on weapon type
-        switch(weapon.name) {
-            case "Double Shot":
-                this.createBullet(this.me.x - 10, this.me.y, 0, -weapon.speed, weapon.damage);
-                this.createBullet(this.me.x + 10, this.me.y, 0, -weapon.speed, weapon.damage);
-                break;
-            case "Triple Shot":
-                this.createBullet(this.me.x, this.me.y, 0, -weapon.speed, weapon.damage);
-                this.createBullet(this.me.x - 15, this.me.y, -50, -weapon.speed, weapon.damage);
-                this.createBullet(this.me.x + 15, this.me.y, 50, -weapon.speed, weapon.damage);
-                break;
-            default:
-                this.createBullet(this.me.x, this.me.y, 0, -weapon.speed, weapon.damage);
-        }
-    }
-
-    createBullet(x, y, velocityX, velocityY, damage) {
-        const bullet = this.add.image(x, y, "bullet");
-        bullet.damage = damage;
-        this.bullets.push(bullet);
-
-        // Move bullet in direction
-        this.tweens.add({
-            targets: bullet,
-            x: bullet.x + velocityX,
-            y: bullet.y + velocityY,
-            duration: 1000,
-            onComplete: () => {
-                bullet.destroy();
-                this.bullets = this.bullets.filter(b => b !== bullet);
-            }
-        });
-
-        // Check for collisions
-        this.checkBulletCollision(bullet);
-    }
-
-    checkBulletCollision(bullet) {
-        this.time.addEvent({
-            delay: 50,
-            callback: () => {
-                if (!bullet.active) return;
-
-                Object.keys(this.enemies).forEach(enemyId => {
-                    const enemy = this.enemies[enemyId];
-                    if (enemy && Phaser.Math.Distance.Between(bullet.x, bullet.y, enemy.x, enemy.y) < 30) {
-                        this.socket.emit("enemyHit", { enemyId, damage: bullet.damage });
-                        bullet.destroy();
-                        this.bullets = this.bullets.filter(b => b !== bullet);
-                    }
-                });
-            },
-            repeat: 20 // Check for 1 second
-        });
-    }
-
-    checkXpCollection() {
-        if (!this.me || !this.xpOrbs || this.xpOrbs.length === 0) return;
-
-        for (let i = this.xpOrbs.length - 1; i >= 0; i--) {
-            const orb = this.xpOrbs[i];
-            if (Phaser.Math.Distance.Between(this.me.x, this.me.y, orb.x, orb.y) < 40) {
-                this.socket.emit("collectXpOrb", orb.id);
-                orb.destroy();
-                this.xpOrbs.splice(i, 1);
-            }
-        }
     }
 
     levelUp() {
-        // Play sound and show effect
         this.levelupSound.play();
 
-        // Flash screen
-        const flash = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0xFFFFFF, 0.5);
-        flash.setScrollFactor(0);
-        flash.setOrigin(0);
+        const flash = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0xFFFFFF, 0.5)
+            .setScrollFactor(0)
+            .setOrigin(0);
 
         this.tweens.add({
             targets: flash,
@@ -415,75 +401,61 @@ class GameScene extends Phaser.Scene {
             onComplete: () => flash.destroy()
         });
 
-        // Show level up text
         const levelUpText = this.add.text(
             this.cameras.main.width / 2,
             this.cameras.main.height / 2,
             'LEVEL UP!',
-            { fontSize: '32px', fill: '#ffff00' }
-        );
-        levelUpText.setScrollFactor(0);
-        levelUpText.setOrigin(0.5);
+            { fontSize: '32px', fill: '#ffff00', stroke: '#000000', strokeThickness: 5 }
+        ).setScrollFactor(0).setOrigin(0.5);
 
         this.tweens.add({
             targets: levelUpText,
             scale: 1.5,
             alpha: 0,
             duration: 1000,
-            onComplete: () => levelUpText.destroy()
+            onComplete: () => {
+                levelUpText.destroy();
+                this.showUpgradeOptions();
+            }
         });
-
-        // Show upgrade options
-        this.showUpgradeOptions();
     }
 
     showUpgradeOptions() {
-        // Create black background
-        const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7);
-        bg.setScrollFactor(0);
-        bg.setOrigin(0);
+        const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
+            .setScrollFactor(0)
+            .setOrigin(0);
 
-        // Create text
         const title = this.add.text(
             this.cameras.main.width / 2,
             100,
             'Choose an Upgrade',
             { fontSize: '28px', fill: '#ffffff' }
-        );
-        title.setScrollFactor(0);
-        title.setOrigin(0.5);
+        ).setScrollFactor(0).setOrigin(0.5);
 
-        // Create options
         const options = [
             { text: 'Increase Max HP', effect: () => this.socket.emit("upgrade", "hp") },
             { text: 'Increase Damage', effect: () => this.socket.emit("upgrade", "damage") },
-            { text: 'Reduce Cooldown', effect: () => this.socket.emit("upgrade", "cooldown") }
+            { text: 'Reduce Cooldown', effect: () => this.socket.emit("upgrade", "cooldown") },
+            { text: 'Increase Speed', effect: () => this.socket.emit("upgrade", "speed") }
         ];
 
         const optionButtons = [];
 
         options.forEach((option, i) => {
             const y = 200 + i * 80;
-            const button = this.add.rectangle(this.cameras.main.width / 2, y, 300, 60, 0x3333aa);
-            button.setScrollFactor(0);
-            button.setInteractive();
+            const button = this.add.rectangle(this.cameras.main.width / 2, y, 300, 60, 0x3333aa)
+                .setScrollFactor(0)
+                .setInteractive();
 
             const text = this.add.text(
                 this.cameras.main.width / 2,
                 y,
                 option.text,
                 { fontSize: '20px', fill: '#ffffff' }
-            );
-            text.setScrollFactor(0);
-            text.setOrigin(0.5);
+            ).setScrollFactor(0).setOrigin(0.5);
 
-            button.on('pointerover', () => {
-                button.setFillStyle(0x5555cc);
-            });
-
-            button.on('pointerout', () => {
-                button.setFillStyle(0x3333aa);
-            });
+            button.on('pointerover', () => button.setFillStyle(0x5555cc));
+            button.on('pointerout', () => button.setFillStyle(0x3333aa));
 
             button.on('pointerup', () => {
                 option.effect();
@@ -500,66 +472,46 @@ class GameScene extends Phaser.Scene {
     }
 
     showGameOver() {
-        // Create black background
-        const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.8);
-        bg.setScrollFactor(0);
-        bg.setOrigin(0);
+        const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.8)
+            .setScrollFactor(0)
+            .setOrigin(0);
 
-        // Show game over text
         const gameOverText = this.add.text(
             this.cameras.main.width / 2,
             this.cameras.main.height / 2 - 50,
             'GAME OVER',
-            { fontSize: '48px', fill: '#ff0000' }
-        );
-        gameOverText.setScrollFactor(0);
-        gameOverText.setOrigin(0.5);
+            { fontSize: '48px', fill: '#ff0000', stroke: '#000000', strokeThickness: 6 }
+        ).setScrollFactor(0).setOrigin(0.5);
 
-        // Show score
         const scoreText = this.add.text(
             this.cameras.main.width / 2,
             this.cameras.main.height / 2 + 20,
             `Final Score: ${this.playerStats.score}`,
             { fontSize: '32px', fill: '#ffffff' }
-        );
-        scoreText.setScrollFactor(0);
-        scoreText.setOrigin(0.5);
+        ).setScrollFactor(0).setOrigin(0.5);
 
-        // Restart button
         const restartButton = this.add.rectangle(
             this.cameras.main.width / 2,
             this.cameras.main.height / 2 + 100,
             200,
             60,
             0x3333aa
-        );
-        restartButton.setScrollFactor(0);
-        restartButton.setInteractive();
+        ).setScrollFactor(0).setInteractive();
 
         const restartText = this.add.text(
             this.cameras.main.width / 2,
             this.cameras.main.height / 2 + 100,
             'Restart',
             { fontSize: '24px', fill: '#ffffff' }
-        );
-        restartText.setScrollFactor(0);
-        restartText.setOrigin(0.5);
+        ).setScrollFactor(0).setOrigin(0.5);
 
-        restartButton.on('pointerover', () => {
-            restartButton.setFillStyle(0x5555cc);
-        });
-
-        restartButton.on('pointerout', () => {
-            restartButton.setFillStyle(0x3333aa);
-        });
-
-        restartButton.on('pointerup', () => {
-            window.location.reload();
-        });
+        restartButton.on('pointerover', () => restartButton.setFillStyle(0x5555cc));
+        restartButton.on('pointerout', () => restartButton.setFillStyle(0x3333aa));
+        restartButton.on('pointerup', () => window.location.reload());
     }
 
     updateUI() {
-        // Update health bar
+        // Health bar
         this.hpBar.clear();
         this.hpBar.fillStyle(0x333333, 1);
         this.hpBar.fillRect(20, 40, 200, 10);
@@ -570,10 +522,10 @@ class GameScene extends Phaser.Scene {
         this.hpText.setText(`HP: ${this.playerStats.hp}/${this.playerStats.maxHp}`);
         this.levelText.setText(`Level: ${this.playerStats.level}`);
 
-        // XP bar (assuming 100 XP per level)
-        const nextLevelXp = this.playerStats.level * 100;
-        const currentLevelXp = (this.playerStats.level - 1) * 100;
-        const xpProgress = (this.playerStats.xp - currentLevelXp) / (nextLevelXp - currentLevelXp);
+        // XP bar
+        const requiredXp = this.playerStats.level * 80;
+        const prevRequiredXp = (this.playerStats.level - 1) * 80;
+        const xpProgress = (this.playerStats.xp - prevRequiredXp) / (requiredXp - prevRequiredXp);
 
         this.xpBar.clear();
         this.xpBar.fillStyle(0x333333, 1);
@@ -581,9 +533,16 @@ class GameScene extends Phaser.Scene {
         this.xpBar.fillStyle(0x00FF00, 1);
         this.xpBar.fillRect(20, 100, 200 * xpProgress, 10);
 
-        this.xpText.setText(`XP: ${this.playerStats.xp}/${nextLevelXp}`);
+        this.xpText.setText(`XP: ${this.playerStats.xp}/${requiredXp}`);
         this.scoreText.setText(`Score: ${this.playerStats.score}`);
-        this.weaponText.setText(`Weapon: ${this.weapons[this.currentWeapon].name}`);
+        this.waveText.setText(`Wave: ${this.currentWave || 0}`);
+
+        const damageText = this.playerStats.damageMultiplier ?
+            `${this.playerStats.damageMultiplier.toFixed(1)}x` : '1.0x';
+        const speedText = this.playerStats.speedMultiplier ?
+            `${this.playerStats.speedMultiplier.toFixed(1)}x` : '1.0x';
+
+        this.statsText.setText(`Damage: ${damageText} | Speed: ${speedText}`);
     }
 
     update() {
@@ -591,42 +550,39 @@ class GameScene extends Phaser.Scene {
 
         // Player movement
         let moved = false;
-        const speed = 3; // Movement speed
+        const baseSpeed = 3;
+        const speed = baseSpeed * (this.playerStats.speedMultiplier || 1);
 
         if (this.cursors.left.isDown) { this.me.x -= speed; moved = true; }
         if (this.cursors.right.isDown) { this.me.x += speed; moved = true; }
         if (this.cursors.up.isDown) { this.me.y -= speed; moved = true; }
         if (this.cursors.down.isDown) { this.me.y += speed; moved = true; }
 
-        // Weapon switching
-        if (Phaser.Input.Keyboard.JustDown(this.keys.one)) {
-            this.currentWeapon = 0;
-            this.shootTimer.delay = this.weapons[this.currentWeapon].cooldown;
-            this.updateUI();
-        }
-        if (Phaser.Input.Keyboard.JustDown(this.keys.two) && this.playerStats.level >= 3) {
-            this.currentWeapon = 1;
-            this.shootTimer.delay = this.weapons[this.currentWeapon].cooldown;
-            this.updateUI();
-        }
-        if (Phaser.Input.Keyboard.JustDown(this.keys.three) && this.playerStats.level >= 5) {
-            this.currentWeapon = 2;
-            this.shootTimer.delay = this.weapons[this.currentWeapon].cooldown;
-            this.updateUI();
-        }
+        // Keep player within bounds
+        this.me.x = Phaser.Math.Clamp(this.me.x, 0, 1600);
+        this.me.y = Phaser.Math.Clamp(this.me.y, 0, 1200);
 
         // Send position to server if moved
         if (moved) {
             this.socket.emit("playerMove", { x: this.me.x, y: this.me.y });
         }
 
-        // Check for XP orb collection
-        this.checkXpCollection();
+        // Shooting
+        if (this.input.activePointer.isDown) {
+            this.shootBullet();
+        }
 
         // Update enemy HP text positions
         Object.values(this.enemies).forEach(enemy => {
             if (enemy.hpText) {
-                enemy.hpText.setPosition(enemy.x - 15, enemy.y - 20);
+                enemy.hpText.setPosition(enemy.x - 20, enemy.y - 25);
+            }
+        });
+
+        // Check for XP orb collection
+        this.xpOrbs.forEach(orb => {
+            if (Phaser.Math.Distance.Between(this.me.x, this.me.y, orb.x, orb.y) < 50) {
+                this.socket.emit("collectXpOrb", orb.id);
             }
         });
     }
@@ -639,65 +595,46 @@ class MenuScene extends Phaser.Scene {
     }
 
     preload() {
-        this.load.image("background", "assets/menu_bg.png");
-        this.load.image("title", "assets/title.png");
+        this.load.image("background", "assets/background.png");
     }
 
     create() {
         // Add background
         this.add.image(400, 300, "background");
 
-        // Add title
-        const title = this.add.image(400, 150, "title");
-        if (!title.texture.key) {
-            // Fallback if image not found
-            this.add.text(400, 150, "VAMPIRE FOURVIVOR", {
-                fontSize: '48px',
-                fill: '#ff0000',
-                fontStyle: 'bold',
-                stroke: '#000000',
-                strokeThickness: 6
-            }).setOrigin(0.5);
-        }
+        // Title
+        this.add.text(400, 150, "VAMPIRE SURVIVOR", {
+            fontSize: '48px',
+            fill: '#ff0000',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 6
+        }).setOrigin(0.5);
 
         // Start button
-        const startButton = this.add.rectangle(400, 300, 200, 60, 0x3333aa);
-        startButton.setInteractive();
+        const startButton = this.add.rectangle(400, 300, 200, 60, 0x3333aa)
+            .setInteractive();
 
         const startText = this.add.text(400, 300, "START GAME", {
             fontSize: '24px',
             fill: '#ffffff'
         }).setOrigin(0.5);
 
-        startButton.on('pointerover', () => {
-            startButton.setFillStyle(0x5555cc);
-        });
+        startButton.on('pointerover', () => startButton.setFillStyle(0x5555cc));
+        startButton.on('pointerout', () => startButton.setFillStyle(0x3333aa));
+        startButton.on('pointerup', () => this.scene.start("GameScene"));
 
-        startButton.on('pointerout', () => {
-            startButton.setFillStyle(0x3333aa);
-        });
-
-        startButton.on('pointerup', () => {
-            this.scene.start("GameScene");
-        });
-
-        // How to play
-        const instructionsText = this.add.text(400, 400, "How to play:", {
+        // Controls
+        this.add.text(400, 400, "How to play:", {
             fontSize: '18px',
             fill: '#ffffff',
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        const controls = this.add.text(400, 450, "Arrow Keys to move\n1-3 to switch weapons\nSurvive as long as possible!", {
+        this.add.text(400, 450, "Arrow Keys to move\nClick to shoot\nSurvive as long as possible!", {
             fontSize: '16px',
             fill: '#ffffff',
             align: 'center'
-        }).setOrigin(0.5);
-
-        // Credits
-        this.add.text(400, 550, "Created with Phaser & Socket.IO", {
-            fontSize: '12px',
-            fill: '#cccccc'
         }).setOrigin(0.5);
     }
 }
@@ -706,6 +643,7 @@ const config = {
     type: Phaser.AUTO,
     width: 800,
     height: 600,
+    pixelArt: true,
     physics: {
         default: 'arcade',
         arcade: {
@@ -716,4 +654,6 @@ const config = {
     scene: [MenuScene, GameScene]
 };
 
-new Phaser.Game(config);
+window.onload = () => {
+    new Phaser.Game(config);
+};

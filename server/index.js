@@ -6,13 +6,10 @@ const httpServer = createServer();
 
 const io = new Server(httpServer, {
     cors: {
-        origin: "*", // This is less secure but good for troubleshooting
-        // Alternative: ["http://localhost:5173", "https://vampirefourvivor.netlify.app"]
-        methods: ["GET", "POST", "PUT", "OPTIONS"],
-        credentials: true,
-        allowedHeaders: ["my-custom-header"]
-    },
-    transports: ["websocket", "polling"]
+        origin: "*",
+        methods: ["GET", "POST"],
+        credentials: true
+    }
 });
 
 let players = {};
@@ -34,9 +31,11 @@ const initialPlayerStats = {
     score: 0,
     weaponLevel: 1,
     damageMultiplier: 1,
-    cooldownReduction: 1
+    cooldownReduction: 1,
+    speedMultiplier: 1
 };
 
+// Basic enemy types
 const enemyStats = {
     basic: { hp: 3, speed: 1, points: 10, xpValue: 5 },
     fast: { hp: 2, speed: 2, points: 15, xpValue: 7 },
@@ -46,7 +45,7 @@ const enemyStats = {
 
 // Calculate required XP for a level
 function getRequiredXp(level) {
-    return level * 100;
+    return Math.floor(level * 80);
 }
 
 // Check if player levels up and handle it
@@ -74,7 +73,7 @@ function startGameLoop() {
         moveEnemies();
         moveBullets();
         checkCollisions();
-    }, 33); // Run at approximately 30 FPS
+    }, 33);
     startWaveSystem();
 }
 
@@ -85,21 +84,22 @@ function startWaveSystem() {
         currentWave++;
         console.log(`🌊 Starting wave ${currentWave}`);
         spawnWave();
-    }, 30000);
+    }, 25000);
 }
 
 function spawnWave() {
-    const baseEnemies = 5 + currentWave * 2;
+    const baseEnemies = 5 + Math.floor(currentWave * 2);
+
     let enemyCount = {
-        basic: Math.floor(baseEnemies * 0.6),
-        fast: Math.floor(baseEnemies * 0.3),
+        basic: Math.floor(baseEnemies * 0.5),
+        fast: Math.floor(baseEnemies * 0.2),
         tank: Math.floor(baseEnemies * 0.1),
-        boss: currentWave % 5 === 0 ? 1 : 0
+        boss: currentWave % 4 === 0 ? 1 : 0
     };
 
     Object.entries(enemyCount).forEach(([type, count]) => {
         for (let i = 0; i < count; i++) {
-            setTimeout(() => spawnEnemy(type), i * 1000);
+            setTimeout(() => spawnEnemy(type), i * 800);
         }
     });
 
@@ -157,7 +157,7 @@ function moveBullets() {
         bullet.y += bullet.velocityY;
 
         // Remove bullets that are out of bounds
-        if (bullet.x < 0 || bullet.x > 1600 || bullet.y < 0 || bullet.y > 1200) {
+        if (bullet.x < -50 || bullet.x > 1650 || bullet.y < -50 || bullet.y > 1250) {
             return false;
         }
 
@@ -171,8 +171,15 @@ function checkCollisions() {
     bullets.forEach(bullet => {
         enemies.forEach(enemy => {
             if (Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < 30) {
-                enemy.hp -= bullet.damage;
-                io.emit("enemyHit", { enemyId: enemy.id, hp: enemy.hp });
+                const player = players[bullet.playerId];
+                let damage = bullet.damage;
+
+                enemy.hp -= damage;
+                io.emit("enemyHit", {
+                    enemyId: enemy.id,
+                    hp: enemy.hp,
+                    damage
+                });
 
                 if (enemy.hp <= 0) {
                     killEnemy(enemy, bullet.playerId);
@@ -210,7 +217,7 @@ function checkCollisions() {
     // Check player-xpOrb collisions
     Object.entries(players).forEach(([playerId, player]) => {
         xpOrbs = xpOrbs.filter(orb => {
-            if (Math.hypot(player.x - orb.x, player.y - orb.y) < 40) {
+            if (Math.hypot(player.x - orb.x, player.y - orb.y) < 50) {
                 player.xp += orb.value;
 
                 // Check for level up
@@ -279,13 +286,18 @@ io.on("connection", (socket) => {
     });
 
     socket.on("playerShoot", ({ x, y, angle, damage }) => {
+        const player = players[socket.id];
+        if (!player) return;
+
+        const effectiveDamage = damage * player.damageMultiplier;
+
         const bullet = {
             id: `bullet-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             x,
             y,
             velocityX: Math.cos(angle) * 10,
             velocityY: Math.sin(angle) * 10,
-            damage,
+            damage: effectiveDamage,
             playerId: socket.id
         };
         bullets.push(bullet);
@@ -339,7 +351,7 @@ io.on("connection", (socket) => {
         switch (upgradeType) {
             case "hp":
                 player.maxHp += 1;
-                player.hp = player.maxHp; // Heal to full on max HP upgrade
+                player.hp = player.maxHp;
                 io.emit("updateHP", { id: socket.id, hp: player.hp });
                 break;
             case "damage":
@@ -347,7 +359,10 @@ io.on("connection", (socket) => {
                 break;
             case "cooldown":
                 player.cooldownReduction -= 0.1;
-                if (player.cooldownReduction < 0.3) player.cooldownReduction = 0.3; // Minimum cooldown cap
+                if (player.cooldownReduction < 0.3) player.cooldownReduction = 0.3;
+                break;
+            case "speed":
+                player.speedMultiplier += 0.1;
                 break;
         }
 
@@ -357,7 +372,8 @@ io.on("connection", (socket) => {
                 maxHp: player.maxHp,
                 hp: player.hp,
                 damageMultiplier: player.damageMultiplier,
-                cooldownReduction: player.cooldownReduction
+                cooldownReduction: player.cooldownReduction,
+                speedMultiplier: player.speedMultiplier
             },
             upgradeType
         });
