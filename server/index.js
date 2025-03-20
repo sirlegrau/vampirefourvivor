@@ -32,7 +32,8 @@ const initialPlayerStats = {
     weaponLevel: 1,
     damageMultiplier: 1,
     cooldownReduction: 1,
-    speedMultiplier: 1
+    speedMultiplier: 1,
+    bulletsPerShot: 1
 };
 
 // Basic enemy types
@@ -158,6 +159,7 @@ function moveBullets() {
 
         // Remove bullets that are out of bounds
         if (bullet.x < -50 || bullet.x > 1650 || bullet.y < -50 || bullet.y > 1250) {
+            io.emit("bulletDestroyed", bullet.id);
             return false;
         }
 
@@ -350,19 +352,22 @@ io.on("connection", (socket) => {
 
         switch (upgradeType) {
             case "hp":
-                player.maxHp += 1;
+                player.maxHp += 3;
                 player.hp = player.maxHp;
                 io.emit("updateHP", { id: socket.id, hp: player.hp });
                 break;
             case "damage":
-                player.damageMultiplier += 0.2;
+                player.damageMultiplier += 0.5;
                 break;
             case "cooldown":
-                player.cooldownReduction -= 0.1;
+                player.cooldownReduction -= 0.3;
                 if (player.cooldownReduction < 0.3) player.cooldownReduction = 0.3;
                 break;
             case "speed":
-                player.speedMultiplier += 0.1;
+                player.speedMultiplier += 0.3;
+                break;
+            case "multishot":
+                player.bulletsPerShot = (player.bulletsPerShot || 1) + 1;
                 break;
         }
 
@@ -373,7 +378,8 @@ io.on("connection", (socket) => {
                 hp: player.hp,
                 damageMultiplier: player.damageMultiplier,
                 cooldownReduction: player.cooldownReduction,
-                speedMultiplier: player.speedMultiplier
+                speedMultiplier: player.speedMultiplier,
+                bulletsPerShot: player.bulletsPerShot
             },
             upgradeType
         });

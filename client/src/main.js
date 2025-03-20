@@ -13,6 +13,7 @@ class GameScene extends Phaser.Scene {
         this.canShoot = true;
         this.gameOver = false;
         this.socketUrl = import.meta.env.VITE_SERVER_URL || "https://vampirefourvivor.onrender.com";
+        this.autoShootTimer = 0;
     }
 
     preload() {
@@ -55,6 +56,9 @@ class GameScene extends Phaser.Scene {
 
         // Set up shooting timer
         this.lastShotTime = 0;
+
+        // Store number of bullets to shoot (powerup)
+        this.bulletsPerShot = 1;
     }
 
     createUI() {
@@ -76,7 +80,7 @@ class GameScene extends Phaser.Scene {
         this.waveText = this.add.text(20, 140, "Wave: 0", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
 
         // Stats
-        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
+        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x | Bullets: 1", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
     }
 
     setupSocketConnection() {
@@ -94,8 +98,10 @@ class GameScene extends Phaser.Scene {
                         score: playerData.score || 0,
                         damageMultiplier: playerData.damageMultiplier || 1,
                         cooldownReduction: playerData.cooldownReduction || 1,
-                        speedMultiplier: playerData.speedMultiplier || 1
+                        speedMultiplier: playerData.speedMultiplier || 1,
+                        bulletsPerShot: playerData.bulletsPerShot || 1
                     };
+                    this.bulletsPerShot = this.playerStats.bulletsPerShot || 1;
                     this.me = this.addPlayer(id, playerData.x, playerData.y, true);
                 } else {
                     this.addPlayer(id, playerData.x, playerData.y, false);
@@ -271,6 +277,8 @@ class GameScene extends Phaser.Scene {
                 this.playerStats.damageMultiplier = data.stats.damageMultiplier;
                 this.playerStats.cooldownReduction = data.stats.cooldownReduction;
                 this.playerStats.speedMultiplier = data.stats.speedMultiplier;
+                this.playerStats.bulletsPerShot = data.stats.bulletsPerShot || this.playerStats.bulletsPerShot;
+                this.bulletsPerShot = this.playerStats.bulletsPerShot;
                 this.updateUI();
             }
         });
@@ -360,7 +368,24 @@ class GameScene extends Phaser.Scene {
         return orb;
     }
 
-    shootBullet() {
+    findNearestEnemy() {
+        if (!this.me) return null;
+
+        let nearestEnemy = null;
+        let shortestDistance = Infinity;
+
+        Object.values(this.enemies).forEach(enemy => {
+            const distance = Phaser.Math.Distance.Between(this.me.x, this.me.y, enemy.x, enemy.y);
+            if (distance < shortestDistance) {
+                shortestDistance = distance;
+                nearestEnemy = enemy;
+            }
+        });
+
+        return { enemy: nearestEnemy, distance: shortestDistance };
+    }
+
+    autoShoot() {
         if (!this.me || this.gameOver) return;
 
         const now = this.time.now;
@@ -368,23 +393,30 @@ class GameScene extends Phaser.Scene {
 
         if (now - this.lastShotTime < cooldown) return;
 
+        const nearest = this.findNearestEnemy();
+        if (!nearest || !nearest.enemy) return;
+
         this.lastShotTime = now;
         this.shootSound.play({ volume: 0.2 });
 
-        // Get direction to mouse
-        const pointer = this.input.activePointer;
-        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        // Calculate angle to the enemy
+        const angle = Phaser.Math.Angle.Between(this.me.x, this.me.y, nearest.enemy.x, nearest.enemy.y);
 
-        // Calculate angle
-        const angle = Phaser.Math.Angle.Between(this.me.x, this.me.y, worldPoint.x, worldPoint.y);
+        // Shoot multiple bullets if we have the powerup
+        for (let i = 0; i < this.bulletsPerShot; i++) {
+            // Add a small spread for additional bullets
+            const bulletAngle = i === 0 ? angle : angle + (Math.random() * 0.4 - 0.2);
 
-        // Send to server
-        this.socket.emit("playerShoot", {
-            x: this.me.x,
-            y: this.me.y,
-            angle: angle,
-            damage: 1
-        });
+            // Shoot with slight delay for visual effect
+            setTimeout(() => {
+                this.socket.emit("playerShoot", {
+                    x: this.me.x,
+                    y: this.me.y,
+                    angle: bulletAngle,
+                    damage: 1
+                });
+            }, i * 50);
+        }
     }
 
     levelUp() {
@@ -428,22 +460,23 @@ class GameScene extends Phaser.Scene {
         const title = this.add.text(
             this.cameras.main.width / 2,
             100,
-            'Choose an Upgrade',
-            { fontSize: '28px', fill: '#ffffff' }
+            'Choose an AWESOME Upgrade',
+            { fontSize: '28px', fill: '#ff0000', stroke: '#000000', strokeThickness: 3 }
         ).setScrollFactor(0).setOrigin(0.5);
 
         const options = [
-            { text: 'Increase Max HP', effect: () => this.socket.emit("upgrade", "hp") },
-            { text: 'Increase Damage', effect: () => this.socket.emit("upgrade", "damage") },
-            { text: 'Reduce Cooldown', effect: () => this.socket.emit("upgrade", "cooldown") },
-            { text: 'Increase Speed', effect: () => this.socket.emit("upgrade", "speed") }
+            { text: '+ 3 MAX HP & FULL HEAL', effect: () => this.socket.emit("upgrade", "hp") },
+            { text: '+ 50% DAMAGE', effect: () => this.socket.emit("upgrade", "damage") },
+            { text: '+ 30% ATTACK SPEED', effect: () => this.socket.emit("upgrade", "cooldown") },
+            { text: '+ 30% MOVEMENT SPEED', effect: () => this.socket.emit("upgrade", "speed") },
+            { text: '+ 1 BULLET PER SHOT', effect: () => this.socket.emit("upgrade", "multishot") }
         ];
 
         const optionButtons = [];
 
         options.forEach((option, i) => {
-            const y = 200 + i * 80;
-            const button = this.add.rectangle(this.cameras.main.width / 2, y, 300, 60, 0x3333aa)
+            const y = 200 + i * 70;
+            const button = this.add.rectangle(this.cameras.main.width / 2, y, 400, 60, 0x3333aa)
                 .setScrollFactor(0)
                 .setInteractive();
 
@@ -451,7 +484,7 @@ class GameScene extends Phaser.Scene {
                 this.cameras.main.width / 2,
                 y,
                 option.text,
-                { fontSize: '20px', fill: '#ffffff' }
+                { fontSize: '20px', fill: '#ffffff', stroke: '#000000', strokeThickness: 2 }
             ).setScrollFactor(0).setOrigin(0.5);
 
             button.on('pointerover', () => button.setFillStyle(0x5555cc));
@@ -541,8 +574,9 @@ class GameScene extends Phaser.Scene {
             `${this.playerStats.damageMultiplier.toFixed(1)}x` : '1.0x';
         const speedText = this.playerStats.speedMultiplier ?
             `${this.playerStats.speedMultiplier.toFixed(1)}x` : '1.0x';
+        const bulletText = this.bulletsPerShot || 1;
 
-        this.statsText.setText(`Damage: ${damageText} | Speed: ${speedText}`);
+        this.statsText.setText(`Damage: ${damageText} | Speed: ${speedText} | Bullets: ${bulletText}`);
     }
 
     update() {
@@ -567,10 +601,8 @@ class GameScene extends Phaser.Scene {
             this.socket.emit("playerMove", { x: this.me.x, y: this.me.y });
         }
 
-        // Shooting
-        if (this.input.activePointer.isDown) {
-            this.shootBullet();
-        }
+        // Auto-shooting
+        this.autoShoot();
 
         // Update enemy HP text positions
         Object.values(this.enemies).forEach(enemy => {
@@ -588,72 +620,4 @@ class GameScene extends Phaser.Scene {
     }
 }
 
-// Menu Scene
-class MenuScene extends Phaser.Scene {
-    constructor() {
-        super("MenuScene");
-    }
-
-    preload() {
-        this.load.image("background", "assets/background.png");
-    }
-
-    create() {
-        // Add background
-        this.add.image(400, 300, "background");
-
-        // Title
-        this.add.text(400, 150, "VAMPIRE SURVIVOR", {
-            fontSize: '48px',
-            fill: '#ff0000',
-            fontStyle: 'bold',
-            stroke: '#000000',
-            strokeThickness: 6
-        }).setOrigin(0.5);
-
-        // Start button
-        const startButton = this.add.rectangle(400, 300, 200, 60, 0x3333aa)
-            .setInteractive();
-
-        const startText = this.add.text(400, 300, "START GAME", {
-            fontSize: '24px',
-            fill: '#ffffff'
-        }).setOrigin(0.5);
-
-        startButton.on('pointerover', () => startButton.setFillStyle(0x5555cc));
-        startButton.on('pointerout', () => startButton.setFillStyle(0x3333aa));
-        startButton.on('pointerup', () => this.scene.start("GameScene"));
-
-        // Controls
-        this.add.text(400, 400, "How to play:", {
-            fontSize: '18px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        this.add.text(400, 450, "Arrow Keys to move\nClick to shoot\nSurvive as long as possible!", {
-            fontSize: '16px',
-            fill: '#ffffff',
-            align: 'center'
-        }).setOrigin(0.5);
-    }
-}
-
-const config = {
-    type: Phaser.AUTO,
-    width: 800,
-    height: 600,
-    pixelArt: true,
-    physics: {
-        default: 'arcade',
-        arcade: {
-            gravity: { y: 0 },
-            debug: false
-        }
-    },
-    scene: [MenuScene, GameScene]
-};
-
-window.onload = () => {
-    new Phaser.Game(config);
-};
+export default GameScene;
