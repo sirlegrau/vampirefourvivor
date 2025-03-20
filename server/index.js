@@ -380,6 +380,6 @@ io.on("connection", (socket) => {
     });
 });
 
-httpServer.listen(config.Server.port, "0.0.0.0", () => {
-    console.log(`✅ Server running on http://0.0.0.0:${config.Server.port}`);
+httpServer.listen(config.SERVER.port, "0.0.0.0", () => {
+    console.log(`✅ Server running on http://0.0.0.0:${config.SERVER.port}`);
 });
