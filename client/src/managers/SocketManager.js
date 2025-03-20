@@ -119,12 +119,18 @@ export default class SocketManager {
             }
         });
 
-
-            this.socket.on("upgradeOptions", (upgradeOptions) => {
-                if (this.scene.uiManager) {
-                    this.scene.uiManager.showUpgradeOptions(upgradeOptions);
-                }
-            });
+        this.socket.on("playerUpgraded", (data) => {
+            if (data.id === this.socket.id) {
+                this.scene.playerStats.maxHp = data.stats.maxHp;
+                this.scene.playerStats.hp = data.stats.hp;
+                this.scene.playerStats.damageMultiplier = data.stats.damageMultiplier;
+                this.scene.playerStats.cooldownReduction = data.stats.cooldownReduction;
+                this.scene.playerStats.speedMultiplier = data.stats.speedMultiplier;
+                this.scene.playerStats.bulletsPerShot = data.stats.bulletsPerShot || this.scene.playerStats.bulletsPerShot;
+                this.scene.bulletsPerShot = this.scene.playerStats.bulletsPerShot;
+                this.scene.uiManager.updateUI();
+            }
+        });
 
         this.socket.on("playerDied", (id) => {
             if (id === this.socket.id && !this.scene.gameOver) {
@@ -229,8 +235,6 @@ export default class SocketManager {
         });
     }
 
-    // In SocketManager.js, modify the xpOrbCollected handler:
-
     setupXpHandlers() {
         this.socket.on("updateXP", (data) => {
             if (data.id === this.socket.id) {
@@ -250,10 +254,8 @@ export default class SocketManager {
         });
 
         this.socket.on("xpOrbCollected", (data) => {
-            // Handle both formats (just ID or object with ID)
-            const orbId = typeof data === 'string' ? data : data.id;
-            const orb = this.scene.xpOrbs.find(o => o.id === orbId);
-
+            // Changed from just passing the id to passing the full data object
+            const orb = this.scene.xpOrbs.find(o => o.id === data.id);
             if (orb) {
                 // Add a visual effect before destroying
                 this.scene.tweens.add({
@@ -263,16 +265,17 @@ export default class SocketManager {
                     duration: 200,
                     onComplete: () => {
                         orb.destroy();
-                        this.scene.xpOrbs = this.scene.xpOrbs.filter(o => o.id !== orbId);
+                        this.scene.xpOrbs = this.scene.xpOrbs.filter(o => o.id !== data.id);
                     }
                 });
 
                 // Play sound if this player collected it
                 if (data.playerId === this.socket.id) {
-                    // Uncomment and make sure you have this sound loaded
-                    // if (this.scene.collectSound) {
-                    //     this.scene.collectSound.play({ volume: 0.3 });
-                    // }
+                    // Make sure you have an XP collect sound loaded in your game
+                    /*
+                    if (this.scene.collectSound) {
+                        this.scene.collectSound.play({ volume: 0.3 });
+                    }*/
                 }
             }
         });

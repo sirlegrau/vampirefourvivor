@@ -156,14 +156,9 @@ export default class UIManager {
         });
     }
 
-
-    showUpgradeOptions(upgradeOptions) {
-        // If no upgrade options provided (for backward compatibility), use defaults
-        if (!upgradeOptions) {
-            upgradeOptions = GameConfig.UPGRADES.types;
-        }
-
+    showUpgradeOptions() {
         const config = GameConfig.UI;
+        const upgradeOptions = GameConfig.UPGRADES.types;
 
         const bg = this.scene.add.rectangle(
             0, 0,
@@ -186,15 +181,7 @@ export default class UIManager {
 
         const optionButtons = [];
 
-        // Use upgradeOptions from server or fallback to local config
-        const options = Array.isArray(upgradeOptions) ? upgradeOptions :
-            upgradeOptions.map(type => {
-                const config = GameConfig.UPGRADES.types.find(t => t.id === type) ||
-                    { id: type, text: `Upgrade ${type}` };
-                return config;
-            });
-
-        options.forEach((option, i) => {
+        upgradeOptions.forEach((option, i) => {
             const y = 200 + i * 70;
             const button = this.scene.add.rectangle(
                 this.scene.cameras.main.width / 2,
