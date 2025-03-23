@@ -77,6 +77,10 @@ class GameScene extends Phaser.Scene {
         // Handle game resize
         this.scale.on('resize', this.resizeGame, this);
         this.resizeGame();
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        const isPortrait = this.height > width;
+
         const inputY = isPortrait ? height * 0.4 : 250;
 
         // Add text prompt above the field
