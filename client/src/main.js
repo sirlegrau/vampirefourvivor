@@ -16,6 +16,28 @@ class GameScene extends Phaser.Scene {
         this.isMobile = false;
     }
 
+    const XP = {
+        orbCollectionRadius: 40,
+        // Progressive XP requirements for each level (matches your sequence)
+        xpLevels: [0, 10, 30, 60, 100, 150, 220, 310, 410, 535, 685, 885],
+        // Function to get XP required for a specific level
+        getXpForLevel: (level) => {
+            if (level <= XP.xpLevels.length - 1) {
+                return XP.xpLevels[level];
+            } else {
+                // For levels beyond the predefined list, use logarithmic scaling
+                const baseXp = XP.xpLevels[XP.xpLevels.length - 1];
+                const extraLevels = level - (XP.xpLevels.length - 1);
+                return Math.floor(baseXp + (50 * extraLevels * Math.log10(extraLevels + 1) * 2));
+            }
+        },
+        // XP orbs fade over time
+        orbLifetime: 8000,
+        // XP magnetism increases with player level
+        getMagnetismRadius: (level) => 40 + (level * 5)
+    }
+
+
     preload() {
         // Load assets
         this.load.image("player", "assets/player.png");
@@ -537,6 +559,78 @@ class GameScene extends Phaser.Scene {
         this.socket.on("currentXpOrbs", (orbs) => {
             orbs.forEach(orb => this.addXpOrb(orb.id, orb.x, orb.y, orb.value));
         });
+        this.socket.on("powerupOffered", (data) => {
+            this.showPowerupOptions(data.options);
+        });
+    }
+    // Add this new method to handle powerup display
+    showPowerupOptions(powerupOptions) {
+        const width = this.scene.cameras.main.width;
+        const height = this.scene.cameras.main.height;
+        const isMobile = this.scene.isMobile;
+
+        // Background overlay
+        const bg = this.scene.add.rectangle(0, 0, width, height, 0x000000, 0.7)
+            .setScrollFactor(0)
+            .setOrigin(0)
+            .setDepth(300);
+
+        // Responsive sizes based on device
+        const titleSize = isMobile ? '22px' : '28px';
+        const buttonWidth = isMobile ? width * 0.8 : 400;
+        const buttonHeight = isMobile ? 50 : 60;
+        const textSize = isMobile ? '16px' : '20px';
+
+        // Title text
+        const title = this.scene.add.text(
+            width / 2,
+            isMobile ? 70 : 100,
+            'Choose a POWER-UP',
+            {fontSize: titleSize, fill: '#ff9900', stroke: '#000000', strokeThickness: 3}
+        ).setScrollFactor(0).setOrigin(0.5).setDepth(301);
+
+        const optionButtons = [];
+        const startY = isMobile ? 140 : 200;
+        const spacing = isMobile ? 60 : 70;
+
+        // Create buttons for each powerup option
+        powerupOptions.forEach((option, i) => {
+            const y = startY + i * spacing;
+            const button = this.scene.add.rectangle(width / 2, y, buttonWidth, buttonHeight, 0x994400)
+                .setScrollFactor(0)
+                .setInteractive()
+                .setDepth(301);
+
+            // Format description based on powerup type
+            let description = option.name;
+            if (option.duration) {
+                description += ` (${option.duration/1000}s)`;
+            }
+
+            const text = this.scene.add.text(
+                width / 2,
+                y,
+                description,
+                {fontSize: textSize, fill: '#ffffff', stroke: '#000000', strokeThickness: 2}
+            ).setScrollFactor(0).setOrigin(0.5).setDepth(302);
+
+            // Button hover effects
+            button.on('pointerover', () => button.setFillStyle(0xcc6600));
+            button.on('pointerout', () => button.setFillStyle(0x994400));
+
+            // Button click handler
+            button.on('pointerup', () => {
+                this.socket.emit("selectPowerup", i);
+                bg.destroy();
+                title.destroy();
+                optionButtons.forEach(btn => {
+                    btn.button.destroy();
+                    btn.text.destroy();
+                });
+            });
+
+            optionButtons.push({button, text});
+        });
     }
 
     setupGameStateSocketEvents() {
@@ -917,8 +1011,12 @@ class GameScene extends Phaser.Scene {
         });
 
         // Check for XP orb collection
+        if (!this.scene.me) return;
+
+        const magnetismRadius = XP.getMagnetismRadius(this.playerStats.level);
+
         this.xpOrbs.forEach(orb => {
-            if (Phaser.Math.Distance.Between(this.me.x, this.me.y, orb.x, orb.y) < 50) {
+            if (Phaser.Math.Distance.Between(this.scene.me.x, this.scene.me.y, orb.x, orb.y) < magnetismRadius) {
                 this.socket.emit("collectXpOrb", orb.id);
             }
         });
