@@ -63,9 +63,9 @@ const PLAYER = {
 // Enemy types and their stats (removed swarm, bomber, and tank)
 const ENEMIES = {
     basic: { hp: 3, speed: 1, points: 10, xpValue: 3 },            // Faster, less XP
-    fast: { hp: 2, speed: 2.5, points: 15, xpValue: 1 },             // Even faster
+    fast: { hp: 1, speed: 2.5, points: 15, xpValue: 1 },             // Even faster
     boss: { hp: 35, speed: 0.7, points: 120, xpValue: 10 },          // Stronger boss
-    florotingus: { hp: 1000, speed: 0.3, points: 500, xpValue: 200,  // Special round enemy
+    florotingus: { hp: 666, speed: 0.3, points: 500, xpValue: 200,  // Special round enemy
         spawnRate: 0.2, healthScaling: 1000 }               // Spawn probability and health scaling per wave
 };
 

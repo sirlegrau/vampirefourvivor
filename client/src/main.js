@@ -615,7 +615,7 @@ class GameScene extends Phaser.Scene {
         switch (type) {
             case 'fast':
                 enemy.setTint(0xFF9999);
-                enemy.setScale(0.3);
+                enemy.setScale(0.5);
                 break;
             case 'boss':
                 enemy.setTint(0x9999FF);
@@ -623,7 +623,7 @@ class GameScene extends Phaser.Scene {
                 break;
             case 'florotingus':
                 enemy.setTint(0xFF0000);
-                enemy.setScale(3.4);
+                enemy.setScale(6);
                 break;
             default:
                 enemy.setTint(0xFFFFFF);
@@ -998,7 +998,7 @@ class MenuScene extends Phaser.Scene {
         const titleSize = isPortrait ? '32px' : '48px';
         const titleY = isPortrait ? height * 0.15 : 100;
 
-        this.add.text(width / 2, titleY, "GUNDAATY KILLER\n(EXXXTREME EDITION)\nFINAL 3 PLUS", {
+        this.add.text(width / 2, titleY, "FLOROTINGUS KILLER\n(EXXXTREME EDITION)\nFINAL 3 PLUS", {
             fontSize: titleSize,
             fill: '#ff0000',
             fontStyle: 'bold',
