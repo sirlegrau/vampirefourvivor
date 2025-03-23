@@ -1,7 +1,6 @@
 // gameConfig.js - Enhanced configuration for the multiplayer survival game
 
 // Game world settings
-
 const WORLD = {
     width: 1600,
     height: 1200,
@@ -76,25 +75,15 @@ const ENEMIES = {
 
 // XP and leveling settings
 const XP = {
-    orbCollectionRadius: 40,
-    // Progressive XP requirements for each level
-    xpLevels: [0, 10, 30, 60, 100, 150, 220, 310, 410, 535, 685, 885],
-    // Function to get XP required for a specific level
-    getXpForLevel: (level) => {
-        if (level <= XP.xpLevels.length - 1) {
-            return XP.xpLevels[level];
-        } else {
-            // For levels beyond the predefined list, use logarithmic scaling
-            const baseXp = XP.xpLevels[XP.xpLevels.length - 1];
-            const extraLevels = level - (XP.xpLevels.length - 1);
-            return Math.floor(baseXp + (50 * extraLevels * Math.log10(extraLevels + 1) * 2));
-        }
-    },
+    orbCollectionRadius: 40,  // Smaller collection radius
+    // Logarithmic XP curve similar to Vampire Survivors
+    getRequiredXp: (level) => Math.floor(100 * Math.pow(level, 1.4)),
     // XP orbs fade over time
-    orbLifetime: 888000,
+    orbLifetime: 8000,        // 8 seconds before disappearing
     // XP magnetism increases with player level
     getMagnetismRadius: (level) => 40 + (level * 5)
 };
+
 // Wave spawning settings
 const WAVES = {
     timeBetweenWaves: 30000,     // 30 seconds between waves (slightly longer)
