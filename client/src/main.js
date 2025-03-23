@@ -199,8 +199,8 @@ class GameScene extends Phaser.Scene {
 
         // Determine touch areas based on orientation
         const joystickTouchArea = isPortrait ?
-            { x: 0, y: height * 0.5, width: width * 0.5, height: height * 0.5 } :
-            { x: 0, y: height - 300, width: width * 0.5, height: 300 };
+            {x: 0, y: height * 0.5, width: width * 0.5, height: height * 0.5} :
+            {x: 0, y: height - 300, width: width * 0.5, height: 300};
 
         // Handle touch/pointer down events
         this.input.on('pointerdown', (pointer) => {
@@ -539,6 +539,7 @@ class GameScene extends Phaser.Scene {
         });
 
     }
+
     // Add this new method to handle powerup display
     showPowerupOptions(powerupOptions) {
         const width = this.scene.cameras.main.width;
@@ -580,7 +581,7 @@ class GameScene extends Phaser.Scene {
             // Format description based on powerup type
             let description = option.name;
             if (option.duration) {
-                description += ` (${option.duration/1000}s)`;
+                description += ` (${option.duration / 1000}s)`;
             }
 
             const text = this.scene.add.text(
@@ -932,6 +933,7 @@ class GameScene extends Phaser.Scene {
 
 // Replace the update() method in GameScene with this version:
 
+// In the update method, change the XP orb collection logic to:
     update() {
         if (!this.me || this.gameOver) return;
 
@@ -986,19 +988,23 @@ class GameScene extends Phaser.Scene {
             }
         });
 
-        // Check for XP orb collection
-        if (!this.me) return;
+        // Check for XP orb collection - FIXED VERSION
+        if (this.me) {
+            const magnetismRadius = 100;
+            // Create a copy of the array to safely iterate over
+            const orbsToCheck = [...this.xpOrbs];
 
-        const magnetismRadius = 100; // Arbitrary value for demonstration
-
-        this.xpOrbs.forEach(orb => {
-            if (Phaser.Math.Distance.Between(this.me.x, this.me.y, orb.x, orb.y) < magnetismRadius) {
-                this.socket.emit("collectXpOrb", orb.id);
+            // Use for loop with index to safely handle array modification
+            for (let i = 0; i < orbsToCheck.length; i++) {
+                const orb = orbsToCheck[i];
+                if (Phaser.Math.Distance.Between(this.me.x, this.me.y, orb.x, orb.y) < magnetismRadius) {
+                    this.socket.emit("collectXpOrb", orb.id);
+                    // Don't modify this.xpOrbs here - it will be handled by the socket event
+                }
             }
-        });
+        }
     }
 }
-
 // Menu Scene
 class MenuScene extends Phaser.Scene {
     constructor() {
