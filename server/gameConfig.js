@@ -62,10 +62,10 @@ const PLAYER = {
 
 // Enemy types and their stats (removed swarm, bomber, and tank)
 const ENEMIES = {
-    basic: { hp: 3, speed: 1, points: 10, xpValue: 3 },            // Faster, less XP
-    fast: { hp: 1, speed: 2.5, points: 15, xpValue: 1 },             // Even faster
-    boss: { hp: 35, speed: 0.7, points: 120, xpValue: 10 },          // Stronger boss
-    florotingus: { hp: 666, speed: 0.3, points: 500, xpValue: 200,  // Special round enemy
+    basic: { hp: 3, speed: 1.2, points: 10, xpValue: 2 },            // Faster, less XP
+    fast: { hp: 1, speed: 3, points: 15, xpValue: 1 },             // Even faster
+    boss: { hp: 35, speed: 1, points: 120, xpValue: 5 },          // Stronger boss
+    florotingus: { hp: 666, speed: 1.5, points: 500, xpValue: 100,  // Special round enemy
         spawnRate: 0.2, healthScaling: 1000 }               // Spawn probability and health scaling per wave
 };
 
@@ -73,9 +73,9 @@ const ENEMIES = {
 const XP = {
     orbCollectionRadius: 20,  // Smaller collection radius
     // Logarithmic XP curve similar to Vampire Survivors
-    getRequiredXp: (level) => Math.floor(20 * Math.pow(level, 1.4)),
+    getRequiredXp: (level) => Math.floor(30 * Math.pow(level, 1.7)),
     // XP orbs fade over time
-    orbLifetime: 8000,        // 8 seconds before disappearing
+    orbLifetime: 88000,        // 8 seconds before disappearing
     // XP magnetism increases with player level
     getMagnetismRadius: (level) => 40 + (level * 5)
 };
@@ -86,8 +86,8 @@ const WAVES = {
     firstWave: 1,
 
     // Core wave management settings
-    enemySpawnDelay: 400,        // Delay between spawning enemies within a wave
-    timeBetweenWaves: 8000,      // IMPORTANT: 8 seconds between waves
+    enemySpawnDelay: 200,        // Delay between spawning enemies within a wave
+    timeBetweenWaves: 6000,      // IMPORTANT: 8 seconds between waves
 
     // Explicit wave control states
     waveState: {
@@ -108,7 +108,13 @@ const WAVES = {
 
     // Base enemy count scales logarithmically
     getBaseEnemiesForWave: (waveNumber) => {
-        return Math.floor(5 + (waveNumber * 3) + Math.pow(waveNumber, 1.2));
+        if(waveNumber<10){
+            return Math.floor(5 + (waveNumber * 3) + Math.pow(waveNumber, 1.4));
+
+        }else{
+            return Math.floor(5 + (waveNumber * 2) + Math.pow(waveNumber, 1.7));
+
+        }
     },
 
     // Dynamic wave composition that changes as game progresses
@@ -131,20 +137,20 @@ const WAVES = {
         if (waveNumber <= 10) {
             composition.basic = Math.floor(scaledBaseEnemies * 0.7);
             composition.fast = Math.floor(scaledBaseEnemies * 0.3);
-            if (waveNumber % 5 === 0) composition.boss = 1;
+            composition.boss = waveNumber-2;
         }
         // Mid game and beyond (waves 11+)
         else {
             composition.basic = Math.floor(scaledBaseEnemies * 0.5);
             composition.fast = Math.floor(scaledBaseEnemies * 0.5);
-            if (waveNumber % 5 === 0) composition.boss = 1 + Math.floor(waveNumber / 15);
+            composition.boss = waveNumber;
         }
 
         return composition;
     },
 
     hpScalingPerWave: 0.08,  // More gradual HP scaling
-    speedScalingPerWave: 0.03, // Enemies get slightly faster each wave
+    speedScalingPerWave: 0.05, // Enemies get slightly faster each wave
 
     // Difficulty spike intervals
     difficultySpikes: {
