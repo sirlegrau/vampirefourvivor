@@ -537,9 +537,7 @@ class GameScene extends Phaser.Scene {
         this.socket.on("currentXpOrbs", (orbs) => {
             orbs.forEach(orb => this.addXpOrb(orb.id, orb.x, orb.y, orb.value));
         });
-        this.socket.on("powerupOffered", (data) => {
-            this.showPowerupOptions(data.options);
-        });
+
     }
     // Add this new method to handle powerup display
     showPowerupOptions(powerupOptions) {
