@@ -14,6 +14,7 @@ class GameScene extends Phaser.Scene {
         this.gameOver = false;
         this.socketUrl = import.meta.env.VITE_SERVER_URL || "https://vampirefourvivor.onrender.com";
         this.autoShootTimer = 0;
+        this.isMobile = false;
     }
 
     preload() {
@@ -22,12 +23,19 @@ class GameScene extends Phaser.Scene {
         this.load.image("bullet", "assets/bullet.png");
         this.load.image("experience", "assets/experience.png");
         this.load.image("background", "assets/background.png");
+        this.load.image("joystick", "assets/joystick.png");
+        this.load.image("joystickBase", "assets/joystick_base.png");
         this.load.audio("shoot", "assets/shoot.wav");
         this.load.audio("hit", "assets/hit.wav");
         this.load.audio("levelup", "assets/levelup.wav");
     }
 
     create() {
+        // Check if running on mobile device
+        this.isMobile = this.game.device.os.android ||
+            this.game.device.os.iOS ||
+            (this.game.config.width < 800);
+
         // Add background
         this.add.tileSprite(0, 0, 1600, 1200, "background").setOrigin(0, 0);
 
@@ -43,13 +51,18 @@ class GameScene extends Phaser.Scene {
         this.hitSound = this.sound.add("hit");
         this.levelupSound = this.sound.add("levelup");
 
-        // Set up input
+        // Set up input for desktop
         this.cursors = this.input.keyboard.createCursorKeys();
         this.keys = this.input.keyboard.addKeys({
             one: Phaser.Input.Keyboard.KeyCodes.ONE,
             two: Phaser.Input.Keyboard.KeyCodes.TWO,
             three: Phaser.Input.Keyboard.KeyCodes.THREE
         });
+
+        // Create virtual joystick for mobile
+        if (this.isMobile) {
+            this.createVirtualJoystick();
+        }
 
         // Set up socket connection
         this.setupSocketConnection();
@@ -59,28 +72,205 @@ class GameScene extends Phaser.Scene {
 
         // Store number of bullets to shoot (powerup)
         this.bulletsPerShot = 1;
+
+        // Handle game resize
+        this.scale.on('resize', this.resizeGame, this);
+        this.resizeGame();
+    }
+
+    resizeGame() {
+        const width = this.scale.gameSize.width;
+        const height = this.scale.gameSize.height;
+
+        this.isMobile = width < 800;
+
+        // Reposition UI elements
+        this.updateUIPositions(width, height);
+
+        // Reposition virtual joystick if on mobile
+        if (this.isMobile && this.joyStick) {
+            this.joyStick.base.setPosition(150, height - 150);
+            this.joyStick.thumb.setPosition(150, height - 150);
+        }
+    }
+
+    updateUIPositions(width, height) {
+        if (!this.uiGroup) return;
+
+        const scaleFactor = Math.min(width / 800, 1);
+        const fontSize = Math.max(12, Math.floor(16 * scaleFactor));
+        const padding = Math.max(10, Math.floor(20 * scaleFactor));
+
+        // Update font sizes
+        this.hpText.setFontSize(fontSize);
+        this.levelText.setFontSize(fontSize);
+        this.xpText.setFontSize(fontSize);
+        this.scoreText.setFontSize(fontSize);
+        this.waveText.setFontSize(fontSize);
+        this.statsText.setFontSize(fontSize);
+
+        // Update positions
+        this.hpText.setPosition(padding, padding);
+        this.hpBar.clear();
+        this.hpBar.fillStyle(0x333333, 1);
+        this.hpBar.fillRect(padding, padding + 20, Math.min(200 * scaleFactor, width - padding * 2), 10 * scaleFactor);
+
+        const barWidth = Math.min(200 * scaleFactor, width - padding * 2);
+
+        this.levelText.setPosition(padding, padding + 40 * scaleFactor);
+
+        this.xpBar.clear();
+        this.xpBar.fillStyle(0x333333, 1);
+        this.xpBar.fillRect(padding, padding + 70 * scaleFactor, barWidth, 10 * scaleFactor);
+
+        this.xpText.setPosition(padding, padding + 80 * scaleFactor);
+        this.scoreText.setPosition(padding, padding + 110 * scaleFactor);
+        this.waveText.setPosition(padding, padding + 140 * scaleFactor);
+        this.statsText.setPosition(padding, padding + 170 * scaleFactor);
+
+        this.updateUI(); // Redraw UI elements with current stats
+    }
+
+    createVirtualJoystick() {
+        const height = this.scale.gameSize.height;
+        const width = this.scale.gameSize.width;
+
+        this.joyStick = {
+            base: this.add.image(150, height - 150, 'joystickBase')
+                .setScrollFactor(0)
+                .setAlpha(0.7)
+                .setDepth(1000)
+                .setScale(1.5),
+            thumb: this.add.image(150, height - 150, 'joystick')
+                .setScrollFactor(0)
+                .setAlpha(0.7)
+                .setDepth(1001)
+                .setScale(0.7),
+            vector: new Phaser.Math.Vector2(),
+            isActive: false
+        };
+
+        // Make base a bit transparent
+        this.joyStick.base.setAlpha(0.6);
+
+        // Handle touch/pointer down events
+        this.input.on('pointerdown', (pointer) => {
+            if (pointer.y > height - 300 && pointer.x < width/2) {
+                this.joyStick.isActive = true;
+                this.joyStick.base.setPosition(pointer.x, pointer.y);
+                this.joyStick.thumb.setPosition(pointer.x, pointer.y);
+            } else if (!this.gameOver) {
+                // Shooting with touch (right side of screen)
+                this.manualShoot(pointer);
+            }
+        });
+
+        // Handle pointer move events for joystick
+        this.input.on('pointermove', (pointer) => {
+            if (this.joyStick.isActive) {
+                const distance = Phaser.Math.Distance.Between(
+                    this.joyStick.base.x, this.joyStick.base.y,
+                    pointer.x, pointer.y
+                );
+
+                const maxDistance = 75;
+
+                if (distance <= maxDistance) {
+                    this.joyStick.thumb.setPosition(pointer.x, pointer.y);
+                } else {
+                    const angle = Phaser.Math.Angle.Between(
+                        this.joyStick.base.x, this.joyStick.base.y,
+                        pointer.x, pointer.y
+                    );
+
+                    this.joyStick.thumb.setPosition(
+                        this.joyStick.base.x + maxDistance * Math.cos(angle),
+                        this.joyStick.base.y + maxDistance * Math.sin(angle)
+                    );
+                }
+
+                // Calculate joystick vector (normalized)
+                this.joyStick.vector.x = this.joyStick.thumb.x - this.joyStick.base.x;
+                this.joyStick.vector.y = this.joyStick.thumb.y - this.joyStick.base.y;
+                this.joyStick.vector.normalize();
+            }
+        });
+
+        // Handle pointer up events
+        this.input.on('pointerup', () => {
+            this.joyStick.isActive = false;
+            this.joyStick.vector.x = 0;
+            this.joyStick.vector.y = 0;
+            this.joyStick.thumb.setPosition(this.joyStick.base.x, this.joyStick.base.y);
+        });
+    }
+
+    manualShoot(pointer) {
+        if (!this.me || this.gameOver) return;
+
+        const now = this.time.now;
+        const cooldown = 1000 * this.playerStats.cooldownReduction;
+
+        if (now - this.lastShotTime < cooldown) return;
+
+        this.lastShotTime = now;
+        this.shootSound.play({ volume: 0.2 });
+
+        // Get world position of the pointer
+        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+
+        // Calculate angle to the touch point
+        const angle = Phaser.Math.Angle.Between(this.me.x, this.me.y, worldPoint.x, worldPoint.y);
+
+        // Shoot multiple bullets if we have the powerup
+        for (let i = 0; i < this.bulletsPerShot; i++) {
+            // Add a small spread for additional bullets
+            const bulletAngle = i === 0 ? angle : angle + (Math.random() * 0.4 - 0.2);
+
+            // Shoot with slight delay for visual effect
+            setTimeout(() => {
+                this.socket.emit("playerShoot", {
+                    x: this.me.x,
+                    y: this.me.y,
+                    angle: bulletAngle,
+                    damage: 1
+                });
+            }, i * 50);
+        }
     }
 
     createUI() {
         this.uiGroup = this.add.group();
 
         // Health bar
-        this.hpBar = this.add.graphics().setScrollFactor(0);
-        this.hpText = this.add.text(20, 20, "HP: 5/5", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
+        this.hpBar = this.add.graphics().setScrollFactor(0).setDepth(100);
+        this.hpText = this.add.text(20, 20, "HP: 5/5", { fontSize: '16px', fill: '#ffffff' })
+            .setScrollFactor(0)
+            .setDepth(100);
 
         // Level and XP
-        this.levelText = this.add.text(20, 50, "Level: 1", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
-        this.xpBar = this.add.graphics().setScrollFactor(0);
-        this.xpText = this.add.text(20, 80, "XP: 0/80", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
+        this.levelText = this.add.text(20, 50, "Level: 1", { fontSize: '16px', fill: '#ffffff' })
+            .setScrollFactor(0)
+            .setDepth(100);
+        this.xpBar = this.add.graphics().setScrollFactor(0).setDepth(100);
+        this.xpText = this.add.text(20, 80, "XP: 0/80", { fontSize: '16px', fill: '#ffffff' })
+            .setScrollFactor(0)
+            .setDepth(100);
 
         // Score
-        this.scoreText = this.add.text(20, 110, "Score: 0", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
+        this.scoreText = this.add.text(20, 110, "Score: 0", { fontSize: '16px', fill: '#ffffff' })
+            .setScrollFactor(0)
+            .setDepth(100);
 
         // Current wave
-        this.waveText = this.add.text(20, 140, "Wave: 0", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
+        this.waveText = this.add.text(20, 140, "Wave: 0", { fontSize: '16px', fill: '#ffffff' })
+            .setScrollFactor(0)
+            .setDepth(100);
 
         // Stats
-        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x | Bullets: 1", { fontSize: '16px', fill: '#ffffff' }).setScrollFactor(0);
+        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x | Bullets: 1", { fontSize: '16px', fill: '#ffffff' })
+            .setScrollFactor(0)
+            .setDepth(100);
     }
 
     setupSocketConnection() {
@@ -260,6 +450,7 @@ class GameScene extends Phaser.Scene {
             );
             waveText.setScrollFactor(0);
             waveText.setOrigin(0.5);
+            waveText.setDepth(110);
 
             this.tweens.add({
                 targets: waveText,
@@ -331,8 +522,10 @@ class GameScene extends Phaser.Scene {
                 enemy.setTint(0xFFFFFF);
         }
 
+        // Create smaller HP text on mobile
+        const fontSize = this.isMobile ? '10px' : '12px';
         enemy.hpText = this.add.text(x, y - 20, `HP: ${Math.ceil(hp)}`, {
-            fontSize: '12px',
+            fontSize: fontSize,
             fill: '#ffffff',
             stroke: '#000000',
             strokeThickness: 2
@@ -424,7 +617,8 @@ class GameScene extends Phaser.Scene {
 
         const flash = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0xFFFFFF, 0.5)
             .setScrollFactor(0)
-            .setOrigin(0);
+            .setOrigin(0)
+            .setDepth(200);
 
         this.tweens.add({
             targets: flash,
@@ -438,7 +632,7 @@ class GameScene extends Phaser.Scene {
             this.cameras.main.height / 2,
             'LEVEL UP!',
             { fontSize: '32px', fill: '#ffff00', stroke: '#000000', strokeThickness: 5 }
-        ).setScrollFactor(0).setOrigin(0.5);
+        ).setScrollFactor(0).setOrigin(0.5).setDepth(201);
 
         this.tweens.add({
             targets: levelUpText,
@@ -453,16 +647,26 @@ class GameScene extends Phaser.Scene {
     }
 
     showUpgradeOptions() {
-        const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        const isMobile = this.isMobile;
+
+        const bg = this.add.rectangle(0, 0, width, height, 0x000000, 0.7)
             .setScrollFactor(0)
-            .setOrigin(0);
+            .setOrigin(0)
+            .setDepth(300);
+
+        const titleSize = isMobile ? '22px' : '28px';
+        const buttonWidth = isMobile ? width * 0.8 : 400;
+        const buttonHeight = isMobile ? 50 : 60;
+        const textSize = isMobile ? '16px' : '20px';
 
         const title = this.add.text(
-            this.cameras.main.width / 2,
-            100,
+            width / 2,
+            isMobile ? 70 : 100,
             'Choose an AWESOME Upgrade',
-            { fontSize: '28px', fill: '#ff0000', stroke: '#000000', strokeThickness: 3 }
-        ).setScrollFactor(0).setOrigin(0.5);
+            { fontSize: titleSize, fill: '#ff0000', stroke: '#000000', strokeThickness: 3 }
+        ).setScrollFactor(0).setOrigin(0.5).setDepth(301);
 
         const options = [
             { text: '+ 3 MAX HP & FULL HEAL', effect: () => this.socket.emit("upgrade", "hp") },
@@ -473,19 +677,22 @@ class GameScene extends Phaser.Scene {
         ];
 
         const optionButtons = [];
+        const startY = isMobile ? 140 : 200;
+        const spacing = isMobile ? 60 : 70;
 
         options.forEach((option, i) => {
-            const y = 200 + i * 70;
-            const button = this.add.rectangle(this.cameras.main.width / 2, y, 400, 60, 0x3333aa)
+            const y = startY + i * spacing;
+            const button = this.add.rectangle(width / 2, y, buttonWidth, buttonHeight, 0x3333aa)
                 .setScrollFactor(0)
-                .setInteractive();
+                .setInteractive()
+                .setDepth(301);
 
             const text = this.add.text(
-                this.cameras.main.width / 2,
+                width / 2,
                 y,
                 option.text,
-                { fontSize: '20px', fill: '#ffffff', stroke: '#000000', strokeThickness: 2 }
-            ).setScrollFactor(0).setOrigin(0.5);
+                { fontSize: textSize, fill: '#ffffff', stroke: '#000000', strokeThickness: 2 }
+            ).setScrollFactor(0).setOrigin(0.5).setDepth(302);
 
             button.on('pointerover', () => button.setFillStyle(0x5555cc));
             button.on('pointerout', () => button.setFillStyle(0x3333aa));
@@ -505,38 +712,47 @@ class GameScene extends Phaser.Scene {
     }
 
     showGameOver() {
-        const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.8)
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        const isMobile = this.isMobile;
+
+        const bg = this.add.rectangle(0, 0, width, height, 0x000000, 0.8)
             .setScrollFactor(0)
-            .setOrigin(0);
+            .setOrigin(0)
+            .setDepth(400);
+
+        const gameOverSize = isMobile ? '36px' : '48px';
+        const scoreSize = isMobile ? '24px' : '32px';
+        const buttonWidth = isMobile ? 160 : 200;
 
         const gameOverText = this.add.text(
-            this.cameras.main.width / 2,
-            this.cameras.main.height / 2 - 50,
+            width / 2,
+            height / 2 - 50,
             'GAME OVER',
-            { fontSize: '48px', fill: '#ff0000', stroke: '#000000', strokeThickness: 6 }
-        ).setScrollFactor(0).setOrigin(0.5);
+            { fontSize: gameOverSize, fill: '#ff0000', stroke: '#000000', strokeThickness: 6 }
+        ).setScrollFactor(0).setOrigin(0.5).setDepth(401);
 
         const scoreText = this.add.text(
-            this.cameras.main.width / 2,
-            this.cameras.main.height / 2 + 20,
+            width / 2,
+            height / 2 + 20,
             `Final Score: ${this.playerStats.score}`,
-            { fontSize: '32px', fill: '#ffffff' }
-        ).setScrollFactor(0).setOrigin(0.5);
+            { fontSize: scoreSize, fill: '#ffffff' }
+        ).setScrollFactor(0).setOrigin(0.5).setDepth(401);
 
         const restartButton = this.add.rectangle(
-            this.cameras.main.width / 2,
-            this.cameras.main.height / 2 + 100,
-            200,
+            width / 2,
+            height / 2 + 100,
+            buttonWidth,
             60,
             0x3333aa
-        ).setScrollFactor(0).setInteractive();
+        ).setScrollFactor(0).setInteractive().setDepth(401);
 
         const restartText = this.add.text(
-            this.cameras.main.width / 2,
-            this.cameras.main.height / 2 + 100,
+            width / 2,
+            height / 2 + 100,
             'Restart',
             { fontSize: '24px', fill: '#ffffff' }
-        ).setScrollFactor(0).setOrigin(0.5);
+        ).setScrollFactor(0).setOrigin(0.5).setDepth(402);
 
         restartButton.on('pointerover', () => restartButton.setFillStyle(0x5555cc));
         restartButton.on('pointerout', () => restartButton.setFillStyle(0x3333aa));
