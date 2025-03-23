@@ -1025,8 +1025,18 @@ class MenuScene extends Phaser.Scene {
         this.inputBorder = this.add.rectangle(width / 2, inputY, inputWidth + 2, 42, 0x000000)
             .setDepth(9); // Set lower depth so it appears behind the white rectangle
 
+        // Store input field dimensions for use in other methods
+        this.inputField = {
+            x: width / 2,
+            y: inputY,
+            width: inputWidth,
+            height: 40,
+            leftX: width / 2 - inputWidth / 2 + 10, // Left edge + padding
+            rightX: width / 2 + inputWidth / 2 - 10  // Right edge - padding
+        };
+
         // Create text for the input display
-        this.nameText = this.add.text(width / 2 - (inputWidth/2) + 10, inputY, this.playerName, {
+        this.nameText = this.add.text(this.inputField.leftX, inputY, this.playerName, {
             fontSize: '18px',
             fill: '#000000'
         }).setOrigin(0, 0.5);
@@ -1101,6 +1111,9 @@ class MenuScene extends Phaser.Scene {
                 }
             }
         });
+
+        // Initial cursor position update
+        this.updateCursorPosition();
     }
 
     startEditing() {
@@ -1120,7 +1133,7 @@ class MenuScene extends Phaser.Scene {
             delay: 500,
             callback: () => {
                 this.showCursor = !this.showCursor;
-                this.cursor.visible = this.showCursor;
+                this.cursor.visible = this.showCursor && this.isEditing;
             },
             loop: true
         });
@@ -1140,10 +1153,19 @@ class MenuScene extends Phaser.Scene {
     }
 
     updateCursorPosition() {
-        // Calculate position based on text width
+        // Calculate cursor position after text
         const textWidth = this.nameText.width;
-        const textX = this.nameText.x;
-        this.cursor.x = textX + textWidth;
+        this.cursor.x = this.inputField.leftX + textWidth;
+
+        // Ensure text doesn't overflow the input field
+        if (textWidth > this.inputField.width - 20) {
+            // If text is too long, adjust position to show the end of the text
+            const overflow = textWidth - (this.inputField.width - 20);
+            this.nameText.x = this.inputField.leftX - overflow;
+        } else {
+            // Reset text position if it fits
+            this.nameText.x = this.inputField.leftX;
+        }
     }
 
     handleKeyPress(event) {
@@ -1166,8 +1188,8 @@ class MenuScene extends Phaser.Scene {
         // Allow only alphanumeric characters and some special chars
         const key = event.key;
         if (key.length === 1 && /[a-zA-Z0-9 _-]/.test(key)) {
-            // Limit name length
-            if (this.playerName.length < 12) {
+            // Limit name length (increased to 15)
+            if (this.playerName.length < 15) {
                 this.playerName += key;
                 this.nameText.setText(this.playerName);
                 this.updateCursorPosition();
