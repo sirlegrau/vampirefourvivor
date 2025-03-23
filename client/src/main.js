@@ -9,15 +9,15 @@ class GameScene extends Phaser.Scene {
         this.bullets = {};
         this.xpOrbs = [];
         this.playerStats = {hp: 5, maxHp: 5, xp: 0, level: 1, score: 0};
-        this.currentWeapon = 0;
         this.canShoot = true;
         this.gameOver = false;
         this.socketUrl = import.meta.env.VITE_SERVER_URL || "https://vampirefourvivor.onrender.com";
-        this.autoShootTimer = 0;
+        // Removed unused autoShootTimer and currentWeapon variables
         this.isMobile = false;
     }
 
     preload() {
+        // Load assets
         this.load.image("player", "assets/player.png");
         this.load.image("enemy", "assets/enemy.png");
         this.load.image("bullet", "assets/bullet.png");
@@ -31,7 +31,7 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
-        // Check if running on mobile device
+        // Check if mobile device
         this.isMobile = this.game.device.os.android ||
             this.game.device.os.iOS ||
             (this.game.config.width < 800);
@@ -89,9 +89,17 @@ class GameScene extends Phaser.Scene {
 
         // Reposition virtual joystick if on mobile
         if (this.isMobile && this.joyStick) {
-            this.joyStick.base.setPosition(150, height - 150);
-            this.joyStick.thumb.setPosition(150, height - 150);
+            const joystickX = width * 0.25;
+            const joystickY = height - height * 0.15;
+            this.updateJoystickPosition(joystickX, joystickY);
         }
+    }
+
+    // Added helper function to reduce duplication
+    updateJoystickPosition(x, y) {
+        if (!this.joyStick) return;
+        this.joyStick.base.setPosition(x, y);
+        this.joyStick.thumb.setPosition(x, y);
     }
 
     updateUIPositions(width, height) {
@@ -105,13 +113,9 @@ class GameScene extends Phaser.Scene {
         const fontSize = Math.max(12, Math.floor(16 * scaleFactor));
         const padding = Math.max(10, Math.floor(20 * scaleFactor));
 
-        // Update font sizes
-        this.hpText.setFontSize(fontSize);
-        this.levelText.setFontSize(fontSize);
-        this.xpText.setFontSize(fontSize);
-        this.scoreText.setFontSize(fontSize);
-        this.waveText.setFontSize(fontSize);
-        this.statsText.setFontSize(fontSize);
+        // Update font sizes for all UI text elements
+        [this.hpText, this.levelText, this.xpText, this.scoreText, this.waveText, this.statsText]
+            .forEach(text => text.setFontSize(fontSize));
 
         // Calculate the bar width based on available space
         const barWidth = Math.min(width * 0.6, 200 * scaleFactor);
@@ -166,12 +170,6 @@ class GameScene extends Phaser.Scene {
 
         this.statsText.setPosition(padding, scoreY + verticalSpacing * 2);
 
-        // For portrait orientation, adjust joystick position to be lower
-        if (isPortrait && this.joyStick) {
-            this.joyStick.base.setPosition(width * 0.25, height - height * 0.15);
-            this.joyStick.thumb.setPosition(width * 0.25, height - height * 0.15);
-        }
-
         this.updateUI(); // Redraw UI elements with current stats
     }
 
@@ -187,7 +185,7 @@ class GameScene extends Phaser.Scene {
         this.joyStick = {
             base: this.add.image(joystickX, joystickY, 'joystickBase')
                 .setScrollFactor(0)
-                .setAlpha(0.7)
+                .setAlpha(0.6) // Made base transparent directly here
                 .setDepth(1000)
                 .setScale(1.5),
             thumb: this.add.image(joystickX, joystickY, 'joystick')
@@ -198,9 +196,6 @@ class GameScene extends Phaser.Scene {
             vector: new Phaser.Math.Vector2(),
             isActive: false
         };
-
-        // Make base a bit transparent
-        this.joyStick.base.setAlpha(0.6);
 
         // Determine touch areas based on orientation
         const joystickTouchArea = isPortrait ?
@@ -214,15 +209,13 @@ class GameScene extends Phaser.Scene {
                 pointer.x < joystickTouchArea.width &&
                 pointer.y < joystickTouchArea.y + joystickTouchArea.height) {
                 this.joyStick.isActive = true;
-                this.joyStick.base.setPosition(pointer.x, pointer.y);
-                this.joyStick.thumb.setPosition(pointer.x, pointer.y);
+                this.updateJoystickPosition(pointer.x, pointer.y);
             } else if (!this.gameOver) {
                 // Shooting with touch (right side of screen)
                 this.manualShoot(pointer);
             }
         });
 
-        // The rest of the existing joystick code...
         // Handle pointer move events for joystick
         this.input.on('pointermove', (pointer) => {
             if (this.joyStick.isActive) {
@@ -259,9 +252,10 @@ class GameScene extends Phaser.Scene {
             this.joyStick.isActive = false;
             this.joyStick.vector.x = 0;
             this.joyStick.vector.y = 0;
-            this.joyStick.thumb.setPosition(this.joyStick.base.x, this.joyStick.base.y);
+            this.updateJoystickPosition(this.joyStick.base.x, this.joyStick.base.y);
         });
     }
+
     manualShoot(pointer) {
         if (!this.me || this.gameOver) return;
 
@@ -280,6 +274,11 @@ class GameScene extends Phaser.Scene {
         const angle = Phaser.Math.Angle.Between(this.me.x, this.me.y, worldPoint.x, worldPoint.y);
 
         // Shoot multiple bullets if we have the powerup
+        this.shootBullets(angle);
+    }
+
+    // Added helper function to reduce duplication between manual and auto shooting
+    shootBullets(angle) {
         for (let i = 0; i < this.bulletsPerShot; i++) {
             // Add a small spread for additional bullets
             const bulletAngle = i === 0 ? angle : angle + (Math.random() * 0.4 - 0.2);
@@ -299,38 +298,39 @@ class GameScene extends Phaser.Scene {
     createUI() {
         this.uiGroup = this.add.group();
 
+        // Common style for UI elements
+        const uiStyle = {fontSize: '16px', fill: '#ffffff'};
+        const uiDepth = 100;
+
         // Health bar
-        this.hpBar = this.add.graphics().setScrollFactor(0).setDepth(100);
-        this.hpText = this.add.text(20, 20, "HP: 5/5", {fontSize: '16px', fill: '#ffffff'})
+        this.hpBar = this.add.graphics().setScrollFactor(0).setDepth(uiDepth);
+        this.hpText = this.add.text(20, 20, "HP: 5/5", uiStyle)
             .setScrollFactor(0)
-            .setDepth(100);
+            .setDepth(uiDepth);
 
         // Level and XP
-        this.levelText = this.add.text(20, 50, "Level: 1", {fontSize: '16px', fill: '#ffffff'})
+        this.levelText = this.add.text(20, 50, "Level: 1", uiStyle)
             .setScrollFactor(0)
-            .setDepth(100);
-        this.xpBar = this.add.graphics().setScrollFactor(0).setDepth(100);
-        this.xpText = this.add.text(20, 80, "XP: 0/80", {fontSize: '16px', fill: '#ffffff'})
+            .setDepth(uiDepth);
+        this.xpBar = this.add.graphics().setScrollFactor(0).setDepth(uiDepth);
+        this.xpText = this.add.text(20, 80, "XP: 0/80", uiStyle)
             .setScrollFactor(0)
-            .setDepth(100);
+            .setDepth(uiDepth);
 
         // Score
-        this.scoreText = this.add.text(20, 110, "Score: 0", {fontSize: '16px', fill: '#ffffff'})
+        this.scoreText = this.add.text(20, 110, "Score: 0", uiStyle)
             .setScrollFactor(0)
-            .setDepth(100);
+            .setDepth(uiDepth);
 
         // Current wave
-        this.waveText = this.add.text(20, 140, "Wave: 0", {fontSize: '16px', fill: '#ffffff'})
+        this.waveText = this.add.text(20, 140, "Wave: 0", uiStyle)
             .setScrollFactor(0)
-            .setDepth(100);
+            .setDepth(uiDepth);
 
         // Stats
-        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x | Bullets: 1", {
-            fontSize: '16px',
-            fill: '#ffffff'
-        })
+        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x | Bullets: 1", uiStyle)
             .setScrollFactor(0)
-            .setDepth(100);
+            .setDepth(uiDepth);
     }
 
     setupSocketConnection() {
@@ -360,6 +360,16 @@ class GameScene extends Phaser.Scene {
             this.updateUI();
         });
 
+        // Setup all other socket events
+        this.setupPlayerSocketEvents();
+        this.setupEnemySocketEvents();
+        this.setupBulletSocketEvents();
+        this.setupXpSocketEvents();
+        this.setupGameStateSocketEvents();
+    }
+
+    // Split socket events into logical groups for better organization
+    setupPlayerSocketEvents() {
         this.socket.on("newPlayer", (player) => {
             this.addPlayer(player.id, player.x, player.y, false);
         });
@@ -377,6 +387,67 @@ class GameScene extends Phaser.Scene {
             }
         });
 
+        this.socket.on("updateHP", (data) => {
+            if (data.id === this.socket.id) {
+                this.playerStats.hp = data.hp;
+                this.updateUI();
+
+                this.tweens.add({
+                    targets: this.me,
+                    alpha: 0.5,
+                    duration: 100,
+                    yoyo: true
+                });
+
+                if (this.playerStats.hp <= 0 && !this.gameOver) {
+                    this.gameOver = true;
+                    this.showGameOver();
+                }
+            }
+        });
+
+        this.socket.on("updateXP", (data) => {
+            if (data.id === this.socket.id) {
+                this.playerStats.xp = data.xp;
+                this.playerStats.level = data.level;
+
+                if (data.leveledUp) {
+                    this.levelUp();
+                }
+
+                this.updateUI();
+            }
+        });
+
+        this.socket.on("updateScore", (data) => {
+            if (data.id === this.socket.id) {
+                this.playerStats.score = data.score;
+                this.updateUI();
+            }
+        });
+
+        this.socket.on("playerUpgraded", (data) => {
+            if (data.id === this.socket.id) {
+                this.playerStats.maxHp = data.stats.maxHp;
+                this.playerStats.hp = data.stats.hp;
+                this.playerStats.damageMultiplier = data.stats.damageMultiplier;
+                this.playerStats.cooldownReduction = data.stats.cooldownReduction;
+                this.playerStats.speedMultiplier = data.stats.speedMultiplier;
+                this.playerStats.bulletsPerShot = data.stats.bulletsPerShot || this.playerStats.bulletsPerShot;
+                this.bulletsPerShot = this.playerStats.bulletsPerShot;
+                this.updateUI();
+            }
+        });
+
+        this.socket.on("playerDied", (id) => {
+            if (id === this.socket.id && !this.gameOver) {
+                this.gameOver = true;
+                this.showGameOver();
+            }
+        });
+    }
+
+    setupEnemySocketEvents() {
         this.socket.on("currentEnemies", (enemies) => {
             enemies.forEach(e => this.addEnemy(e.id, e.x, e.y, e.type, e.hp));
         });
@@ -429,7 +500,9 @@ class GameScene extends Phaser.Scene {
                 }
             }
         });
+    }
 
+    setupBulletSocketEvents() {
         this.socket.on("bulletCreated", (data) => {
             this.addBullet(data.id, data.x, data.y, data.velocityX, data.velocityY);
         });
@@ -446,46 +519,9 @@ class GameScene extends Phaser.Scene {
                 delete this.bullets[id];
             }
         });
+    }
 
-        this.socket.on("updateXP", (data) => {
-            if (data.id === this.socket.id) {
-                this.playerStats.xp = data.xp;
-                this.playerStats.level = data.level;
-
-                if (data.leveledUp) {
-                    this.levelUp();
-                }
-
-                this.updateUI();
-            }
-        });
-
-        this.socket.on("updateHP", (data) => {
-            if (data.id === this.socket.id) {
-                this.playerStats.hp = data.hp;
-                this.updateUI();
-
-                this.tweens.add({
-                    targets: this.me,
-                    alpha: 0.5,
-                    duration: 100,
-                    yoyo: true
-                });
-
-                if (this.playerStats.hp <= 0 && !this.gameOver) {
-                    this.gameOver = true;
-                    this.showGameOver();
-                }
-            }
-        });
-
-        this.socket.on("updateScore", (data) => {
-            if (data.id === this.socket.id) {
-                this.playerStats.score = data.score;
-                this.updateUI();
-            }
-        });
-
+    setupXpSocketEvents() {
         this.socket.on("spawnXpOrb", (data) => {
             this.addXpOrb(data.id, data.x, data.y, data.value);
         });
@@ -498,6 +534,12 @@ class GameScene extends Phaser.Scene {
             }
         });
 
+        this.socket.on("currentXpOrbs", (orbs) => {
+            orbs.forEach(orb => this.addXpOrb(orb.id, orb.x, orb.y, orb.value));
+        });
+    }
+
+    setupGameStateSocketEvents() {
         this.socket.on("waveStarted", (data) => {
             this.currentWave = data.wave;
             this.updateUI();
@@ -519,30 +561,6 @@ class GameScene extends Phaser.Scene {
                 duration: 2000,
                 onComplete: () => waveText.destroy()
             });
-        });
-
-        this.socket.on("playerUpgraded", (data) => {
-            if (data.id === this.socket.id) {
-                this.playerStats.maxHp = data.stats.maxHp;
-                this.playerStats.hp = data.stats.hp;
-                this.playerStats.damageMultiplier = data.stats.damageMultiplier;
-                this.playerStats.cooldownReduction = data.stats.cooldownReduction;
-                this.playerStats.speedMultiplier = data.stats.speedMultiplier;
-                this.playerStats.bulletsPerShot = data.stats.bulletsPerShot || this.playerStats.bulletsPerShot;
-                this.bulletsPerShot = this.playerStats.bulletsPerShot;
-                this.updateUI();
-            }
-        });
-
-        this.socket.on("currentXpOrbs", (orbs) => {
-            orbs.forEach(orb => this.addXpOrb(orb.id, orb.x, orb.y, orb.value));
-        });
-
-        this.socket.on("playerDied", (id) => {
-            if (id === this.socket.id && !this.gameOver) {
-                this.gameOver = true;
-                this.showGameOver();
-            }
         });
     }
 
@@ -655,21 +673,8 @@ class GameScene extends Phaser.Scene {
         // Calculate angle to the enemy
         const angle = Phaser.Math.Angle.Between(this.me.x, this.me.y, nearest.enemy.x, nearest.enemy.y);
 
-        // Shoot multiple bullets if we have the powerup
-        for (let i = 0; i < this.bulletsPerShot; i++) {
-            // Add a small spread for additional bullets
-            const bulletAngle = i === 0 ? angle : angle + (Math.random() * 0.4 - 0.2);
-
-            // Shoot with slight delay for visual effect
-            setTimeout(() => {
-                this.socket.emit("playerShoot", {
-                    x: this.me.x,
-                    y: this.me.y,
-                    angle: bulletAngle,
-                    damage: 1
-                });
-            }, i * 50);
-        }
+        // Reuse shooting logic
+        this.shootBullets(angle);
     }
 
     levelUp() {
