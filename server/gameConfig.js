@@ -77,7 +77,7 @@ const ENEMIES = {
 const XP = {
     orbCollectionRadius: 20,  // Smaller collection radius
     // Logarithmic XP curve similar to Vampire Survivors
-    getRequiredXp: (level) => Math.floor(30 * Math.pow(level, 1.4)),
+    getRequiredXp: (level) => Math.floor(20 * Math.pow(level, 1.4)),
     // XP orbs fade over time
     orbLifetime: 8000,        // 8 seconds before disappearing
     // XP magnetism increases with player level
