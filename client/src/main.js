@@ -998,7 +998,7 @@ class MenuScene extends Phaser.Scene {
         const titleSize = isPortrait ? '32px' : '48px';
         const titleY = isPortrait ? height * 0.15 : 100;
 
-        this.add.text(width / 2, titleY, "FLOROTINGUS KILLER\n(EXXXTREME EDITION)\nFINAL 3 PLUS", {
+        this.add.text(width / 2, titleY, "GUNDAATY KILLER\n(EXXXTREME EDITION)\nFINAL 3 PLUS", {
             fontSize: titleSize,
             fill: '#ff0000',
             fontStyle: 'bold',
