@@ -615,7 +615,7 @@ class GameScene extends Phaser.Scene {
         switch (type) {
             case 'fast':
                 enemy.setTint(0xFF9999);
-                enemy.setScale(0.5);
+                enemy.setScale(0.3);
                 break;
             case 'boss':
                 enemy.setTint(0x9999FF);
