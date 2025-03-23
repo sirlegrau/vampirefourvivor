@@ -973,12 +973,13 @@ class GameScene extends Phaser.Scene {
         }
     }
 }
-// Menu Scene
-// Menu Scene
 class MenuScene extends Phaser.Scene {
     constructor() {
         super("MenuScene");
         this.playerName = "Player"; // Default player name
+        this.isEditing = false; // Track if we're currently editing the name
+        this.cursorBlinkTimer = null; // For cursor blinking effect
+        this.showCursor = false; // Cursor visibility state
     }
 
     preload() {
@@ -1017,30 +1018,33 @@ class MenuScene extends Phaser.Scene {
 
         // Create a white rectangle as the input field background
         const inputWidth = isPortrait ? width * 0.6 : 200;
-        const inputBackground = this.add.rectangle(width / 2, inputY, inputWidth, 40, 0xFFFFFF, 0.8)
+        const inputRect = this.add.rectangle(width / 2, inputY, inputWidth, 40, 0xFFFFFF, 0.8)
             .setInteractive();
 
-        // Create text for the placeholder/input display
-        this.nameText = this.add.text(width / 2, inputY, this.playerName, {
+        // Create a black border around the input field
+        this.inputBorder = this.add.rectangle(width / 2, inputY, inputWidth + 2, 42, 0x000000)
+            .setDepth(9); // Set lower depth so it appears behind the white rectangle
+
+        // Create text for the input display
+        this.nameText = this.add.text(width / 2 - (inputWidth/2) + 10, inputY, this.playerName, {
             fontSize: '18px',
             fill: '#000000'
-        }).setOrigin(0.5);
+        }).setOrigin(0, 0.5);
 
-        // When the input field is clicked, show a prompt to enter the name
-        inputBackground.on('pointerup', () => {
-            // Use the built-in browser prompt for simplicity
-            const name = prompt("Enter your name:", this.playerName);
+        // Create cursor for text input
+        this.cursor = this.add.text(0, inputY, "|", {
+            fontSize: '18px',
+            fill: '#000000'
+        }).setOrigin(0, 0.5);
+        this.cursor.visible = false;
 
-            // Update the name if the user entered something
-            if (name !== null && name.trim() !== "") {
-                this.playerName = name.trim();
-                // Limit name length to prevent very long names
-                if (this.playerName.length > 12) {
-                    this.playerName = this.playerName.substring(0, 12);
-                }
-                this.nameText.setText(this.playerName);
-            }
+        // When the input field is clicked, enable typing mode
+        inputRect.on('pointerup', () => {
+            this.startEditing();
         });
+
+        // Set up keyboard input
+        this.input.keyboard.on('keydown', this.handleKeyPress, this);
 
         // Start button - adjust position and size based on orientation
         const buttonY = isPortrait ? height * 0.55 : 300;
@@ -1057,6 +1061,7 @@ class MenuScene extends Phaser.Scene {
         startButton.on('pointerover', () => startButton.setFillStyle(0x5555cc));
         startButton.on('pointerout', () => startButton.setFillStyle(0x3333aa));
         startButton.on('pointerup', () => {
+            this.stopEditing(); // Make sure we exit editing mode
             this.scene.start("GameScene", { playerName: this.playerName });
         });
 
@@ -1079,6 +1084,95 @@ class MenuScene extends Phaser.Scene {
             fill: '#ffffff',
             align: 'center'
         }).setOrigin(0.5);
+
+        // Add click handler to stop editing when clicking outside the input box
+        this.input.on('pointerdown', (pointer) => {
+            if (this.isEditing) {
+                // Check if click is outside the input rectangle
+                const inputHeight = 40;
+                const inputTop = inputY - inputHeight/2;
+                const inputBottom = inputY + inputHeight/2;
+                const inputLeft = width/2 - inputWidth/2;
+                const inputRight = width/2 + inputWidth/2;
+
+                if (pointer.x < inputLeft || pointer.x > inputRight ||
+                    pointer.y < inputTop || pointer.y > inputBottom) {
+                    this.stopEditing();
+                }
+            }
+        });
+    }
+
+    startEditing() {
+        if (this.isEditing) return;
+
+        this.isEditing = true;
+        this.inputBorder.setFillStyle(0x3333FF); // Change border color to indicate focus
+
+        // Position cursor at the end of the text
+        this.updateCursorPosition();
+        this.cursor.visible = true;
+
+        // Start cursor blinking
+        this.showCursor = true;
+        if (this.cursorBlinkTimer) this.cursorBlinkTimer.remove();
+        this.cursorBlinkTimer = this.time.addEvent({
+            delay: 500,
+            callback: () => {
+                this.showCursor = !this.showCursor;
+                this.cursor.visible = this.showCursor;
+            },
+            loop: true
+        });
+    }
+
+    stopEditing() {
+        if (!this.isEditing) return;
+
+        this.isEditing = false;
+        this.inputBorder.setFillStyle(0x000000); // Reset border color
+        this.cursor.visible = false;
+
+        if (this.cursorBlinkTimer) {
+            this.cursorBlinkTimer.remove();
+            this.cursorBlinkTimer = null;
+        }
+    }
+
+    updateCursorPosition() {
+        // Calculate position based on text width
+        const textWidth = this.nameText.width;
+        const textX = this.nameText.x;
+        this.cursor.x = textX + textWidth;
+    }
+
+    handleKeyPress(event) {
+        if (!this.isEditing) return;
+
+        if (event.keyCode === 13) {  // Enter key
+            this.stopEditing();
+            return;
+        }
+
+        if (event.keyCode === 8) {  // Backspace
+            if (this.playerName.length > 0) {
+                this.playerName = this.playerName.slice(0, -1);
+                this.nameText.setText(this.playerName);
+                this.updateCursorPosition();
+            }
+            return;
+        }
+
+        // Allow only alphanumeric characters and some special chars
+        const key = event.key;
+        if (key.length === 1 && /[a-zA-Z0-9 _-]/.test(key)) {
+            // Limit name length
+            if (this.playerName.length < 12) {
+                this.playerName += key;
+                this.nameText.setText(this.playerName);
+                this.updateCursorPosition();
+            }
+        }
     }
 }
 const config = {
