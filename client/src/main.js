@@ -1018,7 +1018,7 @@ class MenuScene extends Phaser.Scene {
 
         // Create a white rectangle as the input field background
         const inputWidth = isPortrait ? width * 0.6 : 200;
-        const inputRect = this.add.rectangle(width / 2, inputY, inputWidth, 40, 0xFFFFFF, 0.8)
+        this.inputRect = this.add.rectangle(width / 2, inputY, inputWidth, 40, 0xFFFFFF, 0.8)
             .setInteractive();
 
         // Create a black border around the input field
@@ -1049,9 +1049,12 @@ class MenuScene extends Phaser.Scene {
         this.cursor.visible = false;
 
         // When the input field is clicked, enable typing mode
-        inputRect.on('pointerup', () => {
+        this.inputRect.on('pointerdown', () => {
             this.startEditing();
         });
+
+        // Make sure keyboard input is enabled for the scene
+        this.input.keyboard.enabled = true;
 
         // Set up keyboard input
         this.input.keyboard.on('keydown', this.handleKeyPress, this);
@@ -1096,31 +1099,49 @@ class MenuScene extends Phaser.Scene {
         }).setOrigin(0.5);
 
         // Add click handler to stop editing when clicking outside the input box
-        this.input.on('pointerdown', (pointer) => {
-            if (this.isEditing) {
-                // Check if click is outside the input rectangle
-                const inputHeight = 40;
-                const inputTop = inputY - inputHeight/2;
-                const inputBottom = inputY + inputHeight/2;
-                const inputLeft = width/2 - inputWidth/2;
-                const inputRight = width/2 + inputWidth/2;
-
-                if (pointer.x < inputLeft || pointer.x > inputRight ||
-                    pointer.y < inputTop || pointer.y > inputBottom) {
-                    this.stopEditing();
-                }
+        this.input.on('pointerdown', (pointer, gameObjects) => {
+            if (this.isEditing && gameObjects.length === 0) {
+                // If we clicked outside any interactive objects, stop editing
+                this.stopEditing();
             }
         });
 
         // Initial cursor position update
         this.updateCursorPosition();
+
+        // Add visual feedback when hovering over the input field
+        this.inputRect.on('pointerover', () => {
+            if (!this.isEditing) {
+                this.inputBorder.setStrokeStyle(2, 0x3333FF);
+            }
+        });
+
+        this.inputRect.on('pointerout', () => {
+            if (!this.isEditing) {
+                this.inputBorder.setStrokeStyle();
+            }
+        });
+
+        // Debug text to show input status
+        this.debugText = this.add.text(10, 10, "", {
+            fontSize: '12px',
+            fill: '#ffffff'
+        });
+        this.updateDebugText();
+    }
+
+    updateDebugText() {
+        this.debugText.setText(
+            `Editing: ${this.isEditing}\n` +
+            `Name: "${this.playerName}"\n` +
+            `Keyboard enabled: ${this.input.keyboard.enabled}`
+        );
     }
 
     startEditing() {
-        if (this.isEditing) return;
-
+        console.log("Start editing");
         this.isEditing = true;
-        this.inputBorder.setFillStyle(0x3333FF); // Change border color to indicate focus
+        this.inputBorder.setFillStyle(0x3333FF, 0.3); // Change border color to indicate focus
 
         // Position cursor at the end of the text
         this.updateCursorPosition();
@@ -1137,11 +1158,12 @@ class MenuScene extends Phaser.Scene {
             },
             loop: true
         });
+
+        this.updateDebugText();
     }
 
     stopEditing() {
-        if (!this.isEditing) return;
-
+        console.log("Stop editing");
         this.isEditing = false;
         this.inputBorder.setFillStyle(0x000000); // Reset border color
         this.cursor.visible = false;
@@ -1150,26 +1172,25 @@ class MenuScene extends Phaser.Scene {
             this.cursorBlinkTimer.remove();
             this.cursorBlinkTimer = null;
         }
+
+        this.updateDebugText();
     }
 
     updateCursorPosition() {
         // Calculate cursor position after text
         const textWidth = this.nameText.width;
         this.cursor.x = this.inputField.leftX + textWidth;
-
-        // Ensure text doesn't overflow the input field
-        if (textWidth > this.inputField.width - 20) {
-            // If text is too long, adjust position to show the end of the text
-            const overflow = textWidth - (this.inputField.width - 20);
-            this.nameText.x = this.inputField.leftX - overflow;
-        } else {
-            // Reset text position if it fits
-            this.nameText.x = this.inputField.leftX;
-        }
     }
 
     handleKeyPress(event) {
+        console.log("Key pressed:", event.key, "isEditing:", this.isEditing);
+
         if (!this.isEditing) return;
+
+        // Prevent default browser behavior for these keys when editing
+        if (event.keyCode === 8 || event.keyCode === 13) {
+            event.preventDefault();
+        }
 
         if (event.keyCode === 13) {  // Enter key
             this.stopEditing();
@@ -1181,6 +1202,7 @@ class MenuScene extends Phaser.Scene {
                 this.playerName = this.playerName.slice(0, -1);
                 this.nameText.setText(this.playerName);
                 this.updateCursorPosition();
+                this.updateDebugText();
             }
             return;
         }
@@ -1188,11 +1210,12 @@ class MenuScene extends Phaser.Scene {
         // Allow only alphanumeric characters and some special chars
         const key = event.key;
         if (key.length === 1 && /[a-zA-Z0-9 _-]/.test(key)) {
-            // Limit name length (increased to 15)
+            // Limit name length
             if (this.playerName.length < 15) {
                 this.playerName += key;
                 this.nameText.setText(this.playerName);
                 this.updateCursorPosition();
+                this.updateDebugText();
             }
         }
     }
