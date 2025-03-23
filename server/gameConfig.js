@@ -73,7 +73,7 @@ const ENEMIES = {
 const XP = {
     orbCollectionRadius: 20,  // Smaller collection radius
     // Logarithmic XP curve similar to Vampire Survivors
-    getRequiredXp: (level) => Math.floor(30 * Math.pow(level, 1.7)),
+    getRequiredXp: (level) => Math.floor(19 * Math.pow(level, 1.8)),
     // XP orbs fade over time
     orbLifetime: 88000,        // 8 seconds before disappearing
     // XP magnetism increases with player level
@@ -149,13 +149,13 @@ const WAVES = {
         if (waveNumber <= 10) {
             composition.basic = Math.floor(scaledBaseEnemies * 0.7);
             composition.fast = Math.floor(scaledBaseEnemies * 0.3);
-            composition.boss = waveNumber-2;
+            composition.boss = waveNumber-5;
         }
         // Mid game and beyond (waves 11+)
         else {
             composition.basic = Math.floor(scaledBaseEnemies * 0.5);
             composition.fast = Math.floor(scaledBaseEnemies * 0.5);
-            composition.boss = waveNumber;
+            composition.boss = waveNumber-2;
         }
 
         return composition;

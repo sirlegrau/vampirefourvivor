@@ -866,8 +866,8 @@ class GameScene extends Phaser.Scene {
         this.levelText.setText(`Level: ${this.playerStats.level}`);
 
         // XP bar
-        const requiredXp = Math.floor(30 * Math.pow(this.playerStats.level, 1.7));
-        const prevRequiredXp = Math.floor(20 * Math.pow(this.playerStats.level-1, 1.7));
+        const requiredXp = Math.floor(19 * Math.pow(this.playerStats.level, 1.8));
+        const prevRequiredXp = Math.floor(19 * Math.pow(this.playerStats.level-1, 1.8));
         const xpProgress = (this.playerStats.xp - prevRequiredXp) / (requiredXp - prevRequiredXp);
 
         this.xpBar.clear();
