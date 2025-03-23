@@ -97,7 +97,11 @@ class GameScene extends Phaser.Scene {
     updateUIPositions(width, height) {
         if (!this.uiGroup) return;
 
-        const scaleFactor = Math.min(width / 800, 1);
+        const isPortrait = height > width;
+        const scaleFactor = isPortrait ?
+            Math.min(width / 400, 1) :  // More aggressive scaling for portrait
+            Math.min(width / 800, 1);
+
         const fontSize = Math.max(12, Math.floor(16 * scaleFactor));
         const padding = Math.max(10, Math.floor(20 * scaleFactor));
 
@@ -109,39 +113,84 @@ class GameScene extends Phaser.Scene {
         this.waveText.setFontSize(fontSize);
         this.statsText.setFontSize(fontSize);
 
-        // Update positions
+        // Calculate the bar width based on available space
+        const barWidth = Math.min(width * 0.6, 200 * scaleFactor);
+
+        // In portrait mode, we might want to move UI to the top
+        // and make it more compact
+        const verticalSpacing = isPortrait ? fontSize * 1.2 : fontSize * 1.5;
+
+        // Position HP elements
         this.hpText.setPosition(padding, padding);
         this.hpBar.clear();
         this.hpBar.fillStyle(0x333333, 1);
-        this.hpBar.fillRect(padding, padding + 20, Math.min(200 * scaleFactor, width - padding * 2), 10 * scaleFactor);
+        this.hpBar.fillRect(padding, padding + fontSize + 4, barWidth, 6 * scaleFactor);
 
-        const barWidth = Math.min(200 * scaleFactor, width - padding * 2);
+        // Position level text with proper spacing
+        const levelY = padding + fontSize + 6 * scaleFactor + 8;
+        this.levelText.setPosition(padding, levelY);
 
-        this.levelText.setPosition(padding, padding + 40 * scaleFactor);
-
+        // Position XP elements
+        const xpBarY = levelY + fontSize + 8;
         this.xpBar.clear();
         this.xpBar.fillStyle(0x333333, 1);
-        this.xpBar.fillRect(padding, padding + 70 * scaleFactor, barWidth, 10 * scaleFactor);
+        this.xpBar.fillRect(padding, xpBarY, barWidth, 6 * scaleFactor);
 
-        this.xpText.setPosition(padding, padding + 80 * scaleFactor);
-        this.scoreText.setPosition(padding, padding + 110 * scaleFactor);
-        this.waveText.setPosition(padding, padding + 140 * scaleFactor);
-        this.statsText.setPosition(padding, padding + 170 * scaleFactor);
+        this.xpText.setPosition(padding, xpBarY + 6 * scaleFactor + 8);
+
+        // Position remaining elements with even spacing
+        const scoreY = xpBarY + 6 * scaleFactor + fontSize + 16;
+        this.scoreText.setPosition(padding, scoreY);
+        this.waveText.setPosition(padding, scoreY + verticalSpacing);
+
+        // For stats text, we may need to adjust the content for small screens
+        if (isPortrait && width < 400) {
+            // Simplified stats display for very small screens
+            const damageText = this.playerStats.damageMultiplier ?
+                `DMG: ${this.playerStats.damageMultiplier.toFixed(1)}x` : 'DMG: 1.0x';
+            const speedText = this.playerStats.speedMultiplier ?
+                `SPD: ${this.playerStats.speedMultiplier.toFixed(1)}x` : 'SPD: 1.0x';
+            const bulletText = `BUL: ${this.bulletsPerShot || 1}`;
+
+            this.statsText.setText(`${damageText}\n${speedText}\n${bulletText}`);
+        } else {
+            // Standard stats display
+            const damageText = this.playerStats.damageMultiplier ?
+                `${this.playerStats.damageMultiplier.toFixed(1)}x` : '1.0x';
+            const speedText = this.playerStats.speedMultiplier ?
+                `${this.playerStats.speedMultiplier.toFixed(1)}x` : '1.0x';
+            const bulletText = this.bulletsPerShot || 1;
+
+            this.statsText.setText(`Damage: ${damageText} | Speed: ${speedText} | Bullets: ${bulletText}`);
+        }
+
+        this.statsText.setPosition(padding, scoreY + verticalSpacing * 2);
+
+        // For portrait orientation, adjust joystick position to be lower
+        if (isPortrait && this.joyStick) {
+            this.joyStick.base.setPosition(width * 0.25, height - height * 0.15);
+            this.joyStick.thumb.setPosition(width * 0.25, height - height * 0.15);
+        }
 
         this.updateUI(); // Redraw UI elements with current stats
     }
 
     createVirtualJoystick() {
-        const height = this.scale.gameSize.height;
-        const width = this.scale.gameSize.width;
+        const height = this.cameras.main.height;
+        const width = this.cameras.main.width;
+        const isPortrait = height > width;
+
+        // Position joystick in the lower left, adjusted for portrait/landscape
+        const joystickX = isPortrait ? width * 0.25 : 150;
+        const joystickY = isPortrait ? height - height * 0.15 : height - 150;
 
         this.joyStick = {
-            base: this.add.image(150, height - 150, 'joystickBase')
+            base: this.add.image(joystickX, joystickY, 'joystickBase')
                 .setScrollFactor(0)
                 .setAlpha(0.7)
                 .setDepth(1000)
                 .setScale(1.5),
-            thumb: this.add.image(150, height - 150, 'joystick')
+            thumb: this.add.image(joystickX, joystickY, 'joystick')
                 .setScrollFactor(0)
                 .setAlpha(0.7)
                 .setDepth(1001)
@@ -153,9 +202,17 @@ class GameScene extends Phaser.Scene {
         // Make base a bit transparent
         this.joyStick.base.setAlpha(0.6);
 
+        // Determine touch areas based on orientation
+        const joystickTouchArea = isPortrait ?
+            { x: 0, y: height * 0.5, width: width * 0.5, height: height * 0.5 } :
+            { x: 0, y: height - 300, width: width * 0.5, height: 300 };
+
         // Handle touch/pointer down events
         this.input.on('pointerdown', (pointer) => {
-            if (pointer.y > height - 300 && pointer.x < width / 2) {
+            // Check if touch is in joystick area
+            if (pointer.y > joystickTouchArea.y &&
+                pointer.x < joystickTouchArea.width &&
+                pointer.y < joystickTouchArea.y + joystickTouchArea.height) {
                 this.joyStick.isActive = true;
                 this.joyStick.base.setPosition(pointer.x, pointer.y);
                 this.joyStick.thumb.setPosition(pointer.x, pointer.y);
@@ -165,6 +222,7 @@ class GameScene extends Phaser.Scene {
             }
         });
 
+        // The rest of the existing joystick code...
         // Handle pointer move events for joystick
         this.input.on('pointermove', (pointer) => {
             if (this.joyStick.isActive) {
@@ -204,7 +262,6 @@ class GameScene extends Phaser.Scene {
             this.joyStick.thumb.setPosition(this.joyStick.base.x, this.joyStick.base.y);
         });
     }
-
     manualShoot(pointer) {
         if (!this.me || this.gameOver) return;
 
@@ -873,24 +930,35 @@ class MenuScene extends Phaser.Scene {
         this.load.image("background", "assets/background.png");
     }
 
-    create() {
-        // Add background
-        this.add.image(400, 300, "background");
 
-        // Title
-        this.add.text(400, 150, "VAMPIRE SURVIVOR", {
-            fontSize: '48px',
+    create() {
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        const isPortrait = height > width;
+
+        // Add background (stretched to cover the whole screen)
+        this.add.tileSprite(0, 0, width, height, "background").setOrigin(0, 0);
+
+        // Title - adjust position and font size based on orientation
+        const titleSize = isPortrait ? '32px' : '48px';
+        const titleY = isPortrait ? height * 0.2 : 150;
+
+        this.add.text(width / 2, titleY, "VAMPIRE SURVIVOR", {
+            fontSize: titleSize,
             fill: '#ff0000',
             fontStyle: 'bold',
             stroke: '#000000',
             strokeThickness: 6
         }).setOrigin(0.5);
 
-        // Start button
-        const startButton = this.add.rectangle(400, 300, 200, 60, 0x3333aa)
+        // Start button - adjust position and size based on orientation
+        const buttonWidth = isPortrait ? width * 0.6 : 200;
+        const buttonY = isPortrait ? height * 0.5 : 300;
+
+        const startButton = this.add.rectangle(width / 2, buttonY, buttonWidth, 60, 0x3333aa)
             .setInteractive();
 
-        const startText = this.add.text(400, 300, "START GAME", {
+        const startText = this.add.text(width / 2, buttonY, "START GAME", {
             fontSize: '24px',
             fill: '#ffffff'
         }).setOrigin(0.5);
@@ -899,14 +967,21 @@ class MenuScene extends Phaser.Scene {
         startButton.on('pointerout', () => startButton.setFillStyle(0x3333aa));
         startButton.on('pointerup', () => this.scene.start("GameScene"));
 
-        // Controls
-        this.add.text(400, 400, "How to play:", {
+        // Controls - adjust position based on orientation
+        const controlsY = isPortrait ? height * 0.7 : 400;
+        const instructionsY = isPortrait ? height * 0.8 : 450;
+
+        this.add.text(width / 2, controlsY, "How to play:", {
             fontSize: '18px',
             fill: '#ffffff',
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        this.add.text(400, 450, "Arrow Keys to move\nClick to shoot\nSurvive as long as possible!", {
+        const instructions = isPortrait ?
+            "Joystick to move\n\nSurvive as long as possible!" :
+            "Arrow Keys to move\n\nSurvive as long as possible!";
+
+        this.add.text(width / 2, instructionsY, instructions, {
             fontSize: '16px',
             fill: '#ffffff',
             align: 'center'
@@ -916,8 +991,15 @@ class MenuScene extends Phaser.Scene {
 
 const config = {
     type: Phaser.AUTO,
-    width: 800,
-    height: 600,
+    // Set width and height to use the full window dimensions
+    width: window.innerWidth,
+    height: window.innerHeight,
+    // Scale mode to automatically adjust to the screen size
+    scale: {
+        mode: Phaser.Scale.RESIZE,
+        // Center the game canvas both horizontally and vertically
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    },
     pixelArt: true,
     physics: {
         default: 'arcade',
@@ -928,7 +1010,8 @@ const config = {
     },
     scene: [MenuScene, GameScene]
 };
+let game;
 
 window.onload = () => {
-    new Phaser.Game(config);
-}
+    game = new Phaser.Game(config);
+};
