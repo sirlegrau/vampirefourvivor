@@ -1121,21 +1121,6 @@ class MenuScene extends Phaser.Scene {
                 this.inputBorder.setStrokeStyle();
             }
         });
-
-        // Debug text to show input status
-        this.debugText = this.add.text(10, 10, "", {
-            fontSize: '12px',
-            fill: '#ffffff'
-        });
-        this.updateDebugText();
-    }
-
-    updateDebugText() {
-        this.debugText.setText(
-            `Editing: ${this.isEditing}\n` +
-            `Name: "${this.playerName}"\n` +
-            `Keyboard enabled: ${this.input.keyboard.enabled}`
-        );
     }
 
     startEditing() {
@@ -1159,7 +1144,59 @@ class MenuScene extends Phaser.Scene {
             loop: true
         });
 
-        this.updateDebugText();
+        // Show virtual keyboard on mobile
+        if (this.sys.game.device.input.touch) {
+            // Create or access a hidden input element
+            if (!this.virtualKeyboard) {
+                this.virtualKeyboard = document.createElement('input');
+                this.virtualKeyboard.setAttribute('type', 'text');
+                this.virtualKeyboard.setAttribute('id', 'virtualKeyboard');
+                this.virtualKeyboard.setAttribute('autocomplete', 'off');
+                this.virtualKeyboard.style.position = 'fixed';
+                this.virtualKeyboard.style.opacity = '0';
+                this.virtualKeyboard.style.top = '50%';
+                this.virtualKeyboard.style.transform = 'translateY(-50%)';
+                this.virtualKeyboard.style.left = '-100px'; // Hide off-screen but still focusable
+                this.virtualKeyboard.style.width = '50px';
+                this.virtualKeyboard.style.height = '50px';
+                this.virtualKeyboard.style.zIndex = '-10';
+                document.body.appendChild(this.virtualKeyboard);
+
+                // Add input event listener
+                this.virtualKeyboard.addEventListener('input', (e) => {
+                    const text = e.target.value;
+                    if (text.length > 0) {
+                        // Add the last character typed to the player name
+                        const lastChar = text[text.length - 1];
+                        if (/[a-zA-Z0-9 _-]/.test(lastChar) && this.playerName.length < 15) {
+                            this.playerName += lastChar;
+                            this.nameText.setText(this.playerName);
+                            this.updateCursorPosition();
+                        }
+                        // Clear the input for the next character
+                        e.target.value = '';
+                    }
+                });
+
+                // Add keydown event listener for special keys like backspace
+                this.virtualKeyboard.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace') {
+                        if (this.playerName.length > 0) {
+                            this.playerName = this.playerName.slice(0, -1);
+                            this.nameText.setText(this.playerName);
+                            this.updateCursorPosition();
+                        }
+                        e.preventDefault(); // Prevent default backspace behavior
+                    } else if (e.key === 'Enter') {
+                        this.stopEditing();
+                        e.preventDefault();
+                    }
+                });
+            }
+
+            // Focus the virtual keyboard to bring up the mobile keyboard
+            this.virtualKeyboard.focus();
+        }
     }
 
     stopEditing() {
@@ -1173,7 +1210,10 @@ class MenuScene extends Phaser.Scene {
             this.cursorBlinkTimer = null;
         }
 
-        this.updateDebugText();
+        // Hide virtual keyboard on mobile
+        if (this.virtualKeyboard) {
+            this.virtualKeyboard.blur();
+        }
     }
 
     updateCursorPosition() {
@@ -1202,7 +1242,6 @@ class MenuScene extends Phaser.Scene {
                 this.playerName = this.playerName.slice(0, -1);
                 this.nameText.setText(this.playerName);
                 this.updateCursorPosition();
-                this.updateDebugText();
             }
             return;
         }
@@ -1215,7 +1254,6 @@ class MenuScene extends Phaser.Scene {
                 this.playerName += key;
                 this.nameText.setText(this.playerName);
                 this.updateCursorPosition();
-                this.updateDebugText();
             }
         }
     }

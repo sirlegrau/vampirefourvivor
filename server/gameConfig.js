@@ -82,18 +82,33 @@ const XP = {
 
 // Wave spawning settings
 const WAVES = {
-    // Remove timeBetweenWaves as waves will now start when previous wave is cleared
-    enemySpawnDelay: 400,        // Faster spawn rate within a wave
+    // Initial wave number (start at 1 instead of 0)
+    initialWave: 1,
+
+    // Delay before starting first wave
+    initialDelay: 3000,        // 3 seconds before first wave
+
+    // Delay between enemy spawns within a wave
+    enemySpawnDelay: 400,      // Spawn rate within a wave
+
+    // Minimum time between waves (to prevent waves from starting immediately)
+    minTimeBetweenWaves: 5000, // At least 5 seconds between waves
+
+    // Time to wait after last enemy is killed before starting next wave
+    nextWaveDelay: 5000,       // 5 second breather after clearing a wave
 
     // Flag to track if all enemies from previous wave are defeated
-    waitForWaveClear: true,      // New flag to enable the wave-on-clear behavior
+    waitForWaveClear: true,    // Enable the wave-on-clear behavior
+
+    // Lock to prevent multiple wave start triggers
+    waveInProgress: false,     // Flag to prevent multiple simultaneous wave starts
 
     // Base enemy count scales logarithmically
     getBaseEnemiesForWave: (waveNumber) => {
         return Math.floor(5 + (waveNumber * 3) + Math.pow(waveNumber, 1.2));
     },
 
-    // Dynamic wave composition that changes as game progresses (removed tank, swarm, bomber)
+    // Dynamic wave composition that changes as game progresses
     getWaveComposition: (waveNumber, baseEnemies, activePlayers) => {
         // Scale enemy count by number of active players
         const playerScaling = Math.max(1, Math.sqrt(activePlayers));
@@ -144,7 +159,12 @@ const WAVES = {
 
     // Visual effects for wave announcements
     announceWaveTime: 3000,  // 3 seconds to announce wave
-    announceBossTime: 5000   // 5 seconds to announce boss wave
+    announceBossTime: 5000,  // 5 seconds to announce boss wave
+
+    // Helper function to check if a wave is complete
+    isWaveComplete: (activeEnemies) => {
+        return activeEnemies <= 0;
+    }
 };
 
 // Game simulation settings
@@ -158,6 +178,7 @@ const SIMULATION = {
     // Tracking for wave progression
     activeEnemies: 0,            // Counter for currently active enemies
     waveComplete: true,          // Flag to track if wave is complete
+    lastWaveEndTime: 0,          // Timestamp of when the last wave ended
 
     // Damage calculation
     calculateDamage: (baseDamage, playerLevel, isCritical) => {
