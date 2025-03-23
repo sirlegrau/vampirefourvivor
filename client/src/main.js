@@ -8,8 +8,7 @@ class GameScene extends Phaser.Scene {
         this.enemies = {};
         this.bullets = {};
         this.xpOrbs = [];
-        this.playerStats = {hp: 5, maxHp: 5, xp: 0, level: 1, score: 0};
-        this.canShoot = true;
+        this.playerStats = {hp: 3, maxHp: 3, xp: 0, level: 1, score: 0};
         this.gameOver = false;
         this.socketUrl = import.meta.env.VITE_SERVER_URL || "https://vampirefourvivor.onrender.com";
         this.isMobile = false;
@@ -77,48 +76,6 @@ class GameScene extends Phaser.Scene {
         // Handle game resize
         this.scale.on('resize', this.resizeGame, this);
         this.resizeGame();
-        const width = this.cameras.main.width;
-        const height = this.cameras.main.height;
-        const isPortrait = this.height > width;
-
-        const inputY = isPortrait ? height * 0.4 : 250;
-
-        // Add text prompt above the field
-        this.add.text(width / 2, inputY - 40, "Enter your name:", {
-            fontSize: '18px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        // Create a white rectangle as the input field background
-        const inputWidth = isPortrait ? width * 0.6 : 200;
-        const inputBackground = this.add.rectangle(width / 2, inputY, inputWidth, 40, 0xFFFFFF, 0.8)
-            .setInteractive();
-
-        // Create text for the placeholder/input display
-        this.nameText = this.add.text(width / 2, inputY, "Player", {
-            fontSize: '18px',
-            fill: '#000000'
-        }).setOrigin(0.5);
-
-        // Default player name
-        this.playerName = "Player";
-
-        // When the input field is clicked, show a prompt to enter the name
-        inputBackground.on('pointerup', () => {
-            // Use the built-in browser prompt for simplicity
-            const name = prompt("Enter your name:", this.playerName);
-
-            // Update the name if the user entered something
-            if (name !== null && name.trim() !== "") {
-                this.playerName = name.trim();
-                // Limit name length to prevent very long names
-                if (this.playerName.length > 12) {
-                    this.playerName = this.playerName.substring(0, 12);
-                }
-                this.nameText.setText(this.playerName);
-            }
-        });
     }
 
     resizeGame() {
@@ -380,6 +337,7 @@ class GameScene extends Phaser.Scene {
         this.socket = io(this.socketUrl);
         this.socket.emit("playerName", this.playerName);
 
+
         this.socket.on("currentPlayers", (players) => {
             Object.keys(players).forEach((id) => {
                 const playerData = players[id];
@@ -592,77 +550,6 @@ class GameScene extends Phaser.Scene {
         });
 
     }
-
-    // Add this new method to handle powerup display
-    showPowerupOptions(powerupOptions) {
-        const width = this.scene.cameras.main.width;
-        const height = this.scene.cameras.main.height;
-        const isMobile = this.scene.isMobile;
-
-        // Background overlay
-        const bg = this.scene.add.rectangle(0, 0, width, height, 0x000000, 0.7)
-            .setScrollFactor(0)
-            .setOrigin(0)
-            .setDepth(300);
-
-        // Responsive sizes based on device
-        const titleSize = isMobile ? '22px' : '28px';
-        const buttonWidth = isMobile ? width * 0.8 : 400;
-        const buttonHeight = isMobile ? 50 : 60;
-        const textSize = isMobile ? '16px' : '20px';
-
-        // Title text
-        const title = this.scene.add.text(
-            width / 2,
-            isMobile ? 70 : 100,
-            'Choose a POWER-UP',
-            {fontSize: titleSize, fill: '#ff9900', stroke: '#000000', strokeThickness: 3}
-        ).setScrollFactor(0).setOrigin(0.5).setDepth(301);
-
-        const optionButtons = [];
-        const startY = isMobile ? 140 : 200;
-        const spacing = isMobile ? 60 : 70;
-
-        // Create buttons for each powerup option
-        powerupOptions.forEach((option, i) => {
-            const y = startY + i * spacing;
-            const button = this.scene.add.rectangle(width / 2, y, buttonWidth, buttonHeight, 0x994400)
-                .setScrollFactor(0)
-                .setInteractive()
-                .setDepth(301);
-
-            // Format description based on powerup type
-            let description = option.name;
-            if (option.duration) {
-                description += ` (${option.duration / 1000}s)`;
-            }
-
-            const text = this.scene.add.text(
-                width / 2,
-                y,
-                description,
-                {fontSize: textSize, fill: '#ffffff', stroke: '#000000', strokeThickness: 2}
-            ).setScrollFactor(0).setOrigin(0.5).setDepth(302);
-
-            // Button hover effects
-            button.on('pointerover', () => button.setFillStyle(0xcc6600));
-            button.on('pointerout', () => button.setFillStyle(0x994400));
-
-            // Button click handler
-            button.on('pointerup', () => {
-                this.socket.emit("selectPowerup", i);
-                bg.destroy();
-                title.destroy();
-                optionButtons.forEach(btn => {
-                    btn.button.destroy();
-                    btn.text.destroy();
-                });
-            });
-
-            optionButtons.push({button, text});
-        });
-    }
-
     setupGameStateSocketEvents() {
         this.socket.on("waveStarted", (data) => {
             this.currentWave = data.wave;
@@ -1087,15 +974,16 @@ class GameScene extends Phaser.Scene {
     }
 }
 // Menu Scene
+// Menu Scene
 class MenuScene extends Phaser.Scene {
     constructor() {
         super("MenuScene");
+        this.playerName = "Player"; // Default player name
     }
 
     preload() {
         this.load.image("background", "assets/background.png");
     }
-
 
     create() {
         const width = this.cameras.main.width;
@@ -1107,7 +995,7 @@ class MenuScene extends Phaser.Scene {
 
         // Title - adjust position and font size based on orientation
         const titleSize = isPortrait ? '32px' : '48px';
-        const titleY = isPortrait ? height * 0.2 : 150;
+        const titleY = isPortrait ? height * 0.15 : 100;
 
         this.add.text(width / 2, titleY, "FLOROTINGUS KILLER PLUS XXX (EXTREME EDITION) 3", {
             fontSize: titleSize,
@@ -1117,9 +1005,46 @@ class MenuScene extends Phaser.Scene {
             strokeThickness: 6
         }).setOrigin(0.5);
 
+        // Add player name input
+        const inputY = isPortrait ? height * 0.35 : 200;
+
+        // Add text prompt above the field
+        this.add.text(width / 2, inputY - 40, "Enter your name:", {
+            fontSize: '18px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        // Create a white rectangle as the input field background
+        const inputWidth = isPortrait ? width * 0.6 : 200;
+        const inputBackground = this.add.rectangle(width / 2, inputY, inputWidth, 40, 0xFFFFFF, 0.8)
+            .setInteractive();
+
+        // Create text for the placeholder/input display
+        this.nameText = this.add.text(width / 2, inputY, this.playerName, {
+            fontSize: '18px',
+            fill: '#000000'
+        }).setOrigin(0.5);
+
+        // When the input field is clicked, show a prompt to enter the name
+        inputBackground.on('pointerup', () => {
+            // Use the built-in browser prompt for simplicity
+            const name = prompt("Enter your name:", this.playerName);
+
+            // Update the name if the user entered something
+            if (name !== null && name.trim() !== "") {
+                this.playerName = name.trim();
+                // Limit name length to prevent very long names
+                if (this.playerName.length > 12) {
+                    this.playerName = this.playerName.substring(0, 12);
+                }
+                this.nameText.setText(this.playerName);
+            }
+        });
+
         // Start button - adjust position and size based on orientation
+        const buttonY = isPortrait ? height * 0.55 : 300;
         const buttonWidth = isPortrait ? width * 0.6 : 200;
-        const buttonY = isPortrait ? height * 0.5 : 300;
 
         const startButton = this.add.rectangle(width / 2, buttonY, buttonWidth, 60, 0x3333aa)
             .setInteractive();
@@ -1134,6 +1059,7 @@ class MenuScene extends Phaser.Scene {
         startButton.on('pointerup', () => {
             this.scene.start("GameScene", { playerName: this.playerName });
         });
+
         // Controls - adjust position based on orientation
         const controlsY = isPortrait ? height * 0.7 : 400;
         const instructionsY = isPortrait ? height * 0.8 : 450;
@@ -1155,7 +1081,6 @@ class MenuScene extends Phaser.Scene {
         }).setOrigin(0.5);
     }
 }
-
 const config = {
     type: Phaser.AUTO,
     // Set width and height to use the full window dimensions
