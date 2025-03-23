@@ -266,7 +266,7 @@ function spawnXpOrb(x, y, value) {
 io.on("connection", (socket) => {
     console.log(`🟢 Player connected: ${socket.id}`);
 
-    players[socket.id] = { ...config.PLAYER.initialStats };
+    players[socket.id] = { ...config.PLAYER.initialStats, name: "Player"};
 
     if (!gameInProgress) {
         gameInProgress = true;
@@ -282,10 +282,22 @@ io.on("connection", (socket) => {
         if (players[socket.id]) {
             players[socket.id].x = x;
             players[socket.id].y = y;
-            socket.broadcast.emit("playerMoved", { id: socket.id, x, y });
+            // Include name in position updates
+            socket.broadcast.emit("playerMoved", {
+                id: socket.id,
+                x,
+                y,
+                name: players[socket.id].name
+            });
         }
     });
-
+    socket.on("playerName", (name) => {
+        if (players[socket.id]) {
+            players[socket.id].name = name || "Anonymous";
+            // Broadcast the name update to all players
+            io.emit("playerNameUpdate", { id: socket.id, name: players[socket.id].name });
+        }
+    });
     socket.on("playerShoot", ({ x, y, angle, damage }) => {
         const player = players[socket.id];
         if (!player) return;
