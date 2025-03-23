@@ -989,12 +989,12 @@ class GameScene extends Phaser.Scene {
         });
 
         // Check for XP orb collection
-        if (!this.scene.me) return;
+        if (!this.me) return;
 
-        const magnetismRadius = XP.getMagnetismRadius(this.playerStats.level);
+        const magnetismRadius = 100; // Arbitrary value for demonstration
 
         this.xpOrbs.forEach(orb => {
-            if (Phaser.Math.Distance.Between(this.scene.me.x, this.scene.me.y, orb.x, orb.y) < magnetismRadius) {
+            if (Phaser.Math.Distance.Between(this.me.x, this.me.y, orb.x, orb.y) < magnetismRadius) {
                 this.socket.emit("collectXpOrb", orb.id);
             }
         });
