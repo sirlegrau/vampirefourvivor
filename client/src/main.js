@@ -8,7 +8,7 @@ class GameScene extends Phaser.Scene {
         this.enemies = {};
         this.bullets = {};
         this.xpOrbs = [];
-        this.playerStats = { hp: 5, maxHp: 5, xp: 0, level: 1, score: 0 };
+        this.playerStats = {hp: 5, maxHp: 5, xp: 0, level: 1, score: 0};
         this.currentWeapon = 0;
         this.canShoot = true;
         this.gameOver = false;
@@ -155,7 +155,7 @@ class GameScene extends Phaser.Scene {
 
         // Handle touch/pointer down events
         this.input.on('pointerdown', (pointer) => {
-            if (pointer.y > height - 300 && pointer.x < width/2) {
+            if (pointer.y > height - 300 && pointer.x < width / 2) {
                 this.joyStick.isActive = true;
                 this.joyStick.base.setPosition(pointer.x, pointer.y);
                 this.joyStick.thumb.setPosition(pointer.x, pointer.y);
@@ -214,7 +214,7 @@ class GameScene extends Phaser.Scene {
         if (now - this.lastShotTime < cooldown) return;
 
         this.lastShotTime = now;
-        this.shootSound.play({ volume: 0.2 });
+        this.shootSound.play({volume: 0.2});
 
         // Get world position of the pointer
         const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -244,31 +244,34 @@ class GameScene extends Phaser.Scene {
 
         // Health bar
         this.hpBar = this.add.graphics().setScrollFactor(0).setDepth(100);
-        this.hpText = this.add.text(20, 20, "HP: 5/5", { fontSize: '16px', fill: '#ffffff' })
+        this.hpText = this.add.text(20, 20, "HP: 5/5", {fontSize: '16px', fill: '#ffffff'})
             .setScrollFactor(0)
             .setDepth(100);
 
         // Level and XP
-        this.levelText = this.add.text(20, 50, "Level: 1", { fontSize: '16px', fill: '#ffffff' })
+        this.levelText = this.add.text(20, 50, "Level: 1", {fontSize: '16px', fill: '#ffffff'})
             .setScrollFactor(0)
             .setDepth(100);
         this.xpBar = this.add.graphics().setScrollFactor(0).setDepth(100);
-        this.xpText = this.add.text(20, 80, "XP: 0/80", { fontSize: '16px', fill: '#ffffff' })
+        this.xpText = this.add.text(20, 80, "XP: 0/80", {fontSize: '16px', fill: '#ffffff'})
             .setScrollFactor(0)
             .setDepth(100);
 
         // Score
-        this.scoreText = this.add.text(20, 110, "Score: 0", { fontSize: '16px', fill: '#ffffff' })
+        this.scoreText = this.add.text(20, 110, "Score: 0", {fontSize: '16px', fill: '#ffffff'})
             .setScrollFactor(0)
             .setDepth(100);
 
         // Current wave
-        this.waveText = this.add.text(20, 140, "Wave: 0", { fontSize: '16px', fill: '#ffffff' })
+        this.waveText = this.add.text(20, 140, "Wave: 0", {fontSize: '16px', fill: '#ffffff'})
             .setScrollFactor(0)
             .setDepth(100);
 
         // Stats
-        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x | Bullets: 1", { fontSize: '16px', fill: '#ffffff' })
+        this.statsText = this.add.text(20, 170, "Damage: 1x | Speed: 1x | Bullets: 1", {
+            fontSize: '16px',
+            fill: '#ffffff'
+        })
             .setScrollFactor(0)
             .setDepth(100);
     }
@@ -337,7 +340,7 @@ class GameScene extends Phaser.Scene {
                 enemy.hp = data.hp;
                 if (enemy.hpText) enemy.hpText.setText(`HP: ${Math.ceil(enemy.hp)}`);
 
-                this.hitSound.play({ volume: 0.3 });
+                this.hitSound.play({volume: 0.3});
                 this.tweens.add({
                     targets: enemy,
                     alpha: 0.5,
@@ -446,7 +449,7 @@ class GameScene extends Phaser.Scene {
                 this.cameras.main.width / 2,
                 100,
                 `WAVE ${data.wave}`,
-                { fontSize: '32px', fill: '#ffffff', stroke: '#000000', strokeThickness: 4 }
+                {fontSize: '32px', fill: '#ffffff', stroke: '#000000', strokeThickness: 4}
             );
             waveText.setScrollFactor(0);
             waveText.setOrigin(0.5);
@@ -505,7 +508,7 @@ class GameScene extends Phaser.Scene {
 
         const enemy = this.add.image(x, y, "enemy");
 
-        switch(type) {
+        switch (type) {
             case 'fast':
                 enemy.setTint(0xFF9999);
                 enemy.setScale(0.8);
@@ -575,7 +578,7 @@ class GameScene extends Phaser.Scene {
             }
         });
 
-        return { enemy: nearestEnemy, distance: shortestDistance };
+        return {enemy: nearestEnemy, distance: shortestDistance};
     }
 
     autoShoot() {
@@ -590,7 +593,7 @@ class GameScene extends Phaser.Scene {
         if (!nearest || !nearest.enemy) return;
 
         this.lastShotTime = now;
-        this.shootSound.play({ volume: 0.2 });
+        this.shootSound.play({volume: 0.2});
 
         // Calculate angle to the enemy
         const angle = Phaser.Math.Angle.Between(this.me.x, this.me.y, nearest.enemy.x, nearest.enemy.y);
@@ -631,7 +634,7 @@ class GameScene extends Phaser.Scene {
             this.cameras.main.width / 2,
             this.cameras.main.height / 2,
             'LEVEL UP!',
-            { fontSize: '32px', fill: '#ffff00', stroke: '#000000', strokeThickness: 5 }
+            {fontSize: '32px', fill: '#ffff00', stroke: '#000000', strokeThickness: 5}
         ).setScrollFactor(0).setOrigin(0.5).setDepth(201);
 
         this.tweens.add({
@@ -665,15 +668,15 @@ class GameScene extends Phaser.Scene {
             width / 2,
             isMobile ? 70 : 100,
             'Choose an AWESOME Upgrade',
-            { fontSize: titleSize, fill: '#ff0000', stroke: '#000000', strokeThickness: 3 }
+            {fontSize: titleSize, fill: '#ff0000', stroke: '#000000', strokeThickness: 3}
         ).setScrollFactor(0).setOrigin(0.5).setDepth(301);
 
         const options = [
-            { text: '+ 3 MAX HP & FULL HEAL', effect: () => this.socket.emit("upgrade", "hp") },
-            { text: '+ 50% DAMAGE', effect: () => this.socket.emit("upgrade", "damage") },
-            { text: '+ 30% ATTACK SPEED', effect: () => this.socket.emit("upgrade", "cooldown") },
-            { text: '+ 30% MOVEMENT SPEED', effect: () => this.socket.emit("upgrade", "speed") },
-            { text: '+ 1 BULLET PER SHOT', effect: () => this.socket.emit("upgrade", "multishot") }
+            {text: '+ 3 MAX HP & FULL HEAL', effect: () => this.socket.emit("upgrade", "hp")},
+            {text: '+ 50% DAMAGE', effect: () => this.socket.emit("upgrade", "damage")},
+            {text: '+ 30% ATTACK SPEED', effect: () => this.socket.emit("upgrade", "cooldown")},
+            {text: '+ 30% MOVEMENT SPEED', effect: () => this.socket.emit("upgrade", "speed")},
+            {text: '+ 1 BULLET PER SHOT', effect: () => this.socket.emit("upgrade", "multishot")}
         ];
 
         const optionButtons = [];
@@ -691,7 +694,7 @@ class GameScene extends Phaser.Scene {
                 width / 2,
                 y,
                 option.text,
-                { fontSize: textSize, fill: '#ffffff', stroke: '#000000', strokeThickness: 2 }
+                {fontSize: textSize, fill: '#ffffff', stroke: '#000000', strokeThickness: 2}
             ).setScrollFactor(0).setOrigin(0.5).setDepth(302);
 
             button.on('pointerover', () => button.setFillStyle(0x5555cc));
@@ -707,7 +710,7 @@ class GameScene extends Phaser.Scene {
                 });
             });
 
-            optionButtons.push({ button, text });
+            optionButtons.push({button, text});
         });
     }
 
@@ -729,14 +732,14 @@ class GameScene extends Phaser.Scene {
             width / 2,
             height / 2 - 50,
             'GAME OVER',
-            { fontSize: gameOverSize, fill: '#ff0000', stroke: '#000000', strokeThickness: 6 }
+            {fontSize: gameOverSize, fill: '#ff0000', stroke: '#000000', strokeThickness: 6}
         ).setScrollFactor(0).setOrigin(0.5).setDepth(401);
 
         const scoreText = this.add.text(
             width / 2,
             height / 2 + 20,
             `Final Score: ${this.playerStats.score}`,
-            { fontSize: scoreSize, fill: '#ffffff' }
+            {fontSize: scoreSize, fill: '#ffffff'}
         ).setScrollFactor(0).setOrigin(0.5).setDepth(401);
 
         const restartButton = this.add.rectangle(
@@ -751,7 +754,7 @@ class GameScene extends Phaser.Scene {
             width / 2,
             height / 2 + 100,
             'Restart',
-            { fontSize: '24px', fill: '#ffffff' }
+            {fontSize: '24px', fill: '#ffffff'}
         ).setScrollFactor(0).setOrigin(0.5).setDepth(402);
 
         restartButton.on('pointerover', () => restartButton.setFillStyle(0x5555cc));
@@ -795,6 +798,8 @@ class GameScene extends Phaser.Scene {
         this.statsText.setText(`Damage: ${damageText} | Speed: ${speedText} | Bullets: ${bulletText}`);
     }
 
+// Replace the update() method in GameScene with this version:
+
     update() {
         if (!this.me || this.gameOver) return;
 
@@ -803,10 +808,32 @@ class GameScene extends Phaser.Scene {
         const baseSpeed = 3;
         const speed = baseSpeed * (this.playerStats.speedMultiplier || 1);
 
-        if (this.cursors.left.isDown) { this.me.x -= speed; moved = true; }
-        if (this.cursors.right.isDown) { this.me.x += speed; moved = true; }
-        if (this.cursors.up.isDown) { this.me.y -= speed; moved = true; }
-        if (this.cursors.down.isDown) { this.me.y += speed; moved = true; }
+        // Keyboard movement for desktop
+        if (this.cursors.left.isDown) {
+            this.me.x -= speed;
+            moved = true;
+        }
+        if (this.cursors.right.isDown) {
+            this.me.x += speed;
+            moved = true;
+        }
+        if (this.cursors.up.isDown) {
+            this.me.y -= speed;
+            moved = true;
+        }
+        if (this.cursors.down.isDown) {
+            this.me.y += speed;
+            moved = true;
+        }
+
+        // Joystick movement for mobile
+        if (this.joyStick && this.joyStick.isActive &&
+            (this.joyStick.vector.x !== 0 || this.joyStick.vector.y !== 0)) {
+            // Apply the joystick vector to move the player
+            this.me.x += this.joyStick.vector.x * speed;
+            this.me.y += this.joyStick.vector.y * speed;
+            moved = true;
+        }
 
         // Keep player within bounds
         this.me.x = Phaser.Math.Clamp(this.me.x, 0, 1600);
@@ -814,7 +841,7 @@ class GameScene extends Phaser.Scene {
 
         // Send position to server if moved
         if (moved) {
-            this.socket.emit("playerMove", { x: this.me.x, y: this.me.y });
+            this.socket.emit("playerMove", {x: this.me.x, y: this.me.y});
         }
 
         // Auto-shooting
