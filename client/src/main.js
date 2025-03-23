@@ -12,9 +12,10 @@ class GameScene extends Phaser.Scene {
         this.canShoot = true;
         this.gameOver = false;
         this.socketUrl = import.meta.env.VITE_SERVER_URL || "https://vampirefourvivor.onrender.com";
-        // Removed unused autoShootTimer and currentWeapon variables
         this.isMobile = false;
+        this.playerName = "Player"; // Default player name
     }
+
 
     preload() {
         // Load assets
@@ -76,6 +77,44 @@ class GameScene extends Phaser.Scene {
         // Handle game resize
         this.scale.on('resize', this.resizeGame, this);
         this.resizeGame();
+        const inputY = isPortrait ? height * 0.4 : 250;
+
+        // Add text prompt above the field
+        this.add.text(width / 2, inputY - 40, "Enter your name:", {
+            fontSize: '18px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        // Create a white rectangle as the input field background
+        const inputWidth = isPortrait ? width * 0.6 : 200;
+        const inputBackground = this.add.rectangle(width / 2, inputY, inputWidth, 40, 0xFFFFFF, 0.8)
+            .setInteractive();
+
+        // Create text for the placeholder/input display
+        this.nameText = this.add.text(width / 2, inputY, "Player", {
+            fontSize: '18px',
+            fill: '#000000'
+        }).setOrigin(0.5);
+
+        // Default player name
+        this.playerName = "Player";
+
+        // When the input field is clicked, show a prompt to enter the name
+        inputBackground.on('pointerup', () => {
+            // Use the built-in browser prompt for simplicity
+            const name = prompt("Enter your name:", this.playerName);
+
+            // Update the name if the user entered something
+            if (name !== null && name.trim() !== "") {
+                this.playerName = name.trim();
+                // Limit name length to prevent very long names
+                if (this.playerName.length > 12) {
+                    this.playerName = this.playerName.substring(0, 12);
+                }
+                this.nameText.setText(this.playerName);
+            }
+        });
     }
 
     resizeGame() {
@@ -335,6 +374,7 @@ class GameScene extends Phaser.Scene {
 
     setupSocketConnection() {
         this.socket = io(this.socketUrl);
+        this.socket.emit("playerName", this.playerName);
 
         this.socket.on("currentPlayers", (players) => {
             Object.keys(players).forEach((id) => {
@@ -366,6 +406,7 @@ class GameScene extends Phaser.Scene {
         this.setupBulletSocketEvents();
         this.setupXpSocketEvents();
         this.setupGameStateSocketEvents();
+
     }
 
     // Split socket events into logical groups for better organization
@@ -377,11 +418,19 @@ class GameScene extends Phaser.Scene {
         this.socket.on("playerMoved", (data) => {
             if (this.players[data.id]) {
                 this.players[data.id].setPosition(data.x, data.y);
+
+                // Update name text position for the moved player
+                if (this.players[data.id].nameText) {
+                    this.players[data.id].nameText.setPosition(data.x, data.y + 25);
+                }
             }
         });
 
         this.socket.on("playerDisconnected", (id) => {
             if (this.players[id]) {
+                if (this.players[id].nameText) {
+                    this.players[id].nameText.destroy();
+                }
                 this.players[id].destroy();
                 delete this.players[id];
             }
@@ -634,20 +683,38 @@ class GameScene extends Phaser.Scene {
             });
         });
     }
+    init(data) {
+        if (data && data.playerName) {
+            this.playerName = data.playerName;
+        }
+    }
 
     addPlayer(id, x, y, isMe = false) {
         const player = this.add.image(x, y, "player");
 
+        // Add name text below the player
+        const nameText = this.add.text(x, y + 25, isMe ? this.playerName : "Player", {
+            fontSize: '12px',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 2,
+            align: 'center'
+        }).setOrigin(0.5);
+
         if (isMe) {
             player.setTint(0x00FF00);
             this.cameras.main.startFollow(player, true, 0.05, 0.05);
+            player.nameText = nameText;
         } else {
             player.setTint(0xFFFF00);
+            // For other players, use a generic name or get it from server if implemented
+            player.nameText = nameText;
         }
 
         this.players[id] = player;
         return player;
     }
+
 
     addEnemy(id, x, y, type = 'basic', hp = 3) {
         if (this.enemies[id]) return;
@@ -976,7 +1043,17 @@ class GameScene extends Phaser.Scene {
         // Send position to server if moved
         if (moved) {
             this.socket.emit("playerMove", {x: this.me.x, y: this.me.y});
+
+            // Update name text position
+            if (this.me.nameText) {
+                this.me.nameText.setPosition(this.me.x, this.me.y + 25);
+            }
         }
+        Object.values(this.players).forEach(player => {
+            if (player !== this.me && player.nameText) {
+                player.nameText.setPosition(player.x, player.y + 25);
+            }
+        });
 
         // Auto-shooting
         this.autoShoot();
@@ -1050,8 +1127,9 @@ class MenuScene extends Phaser.Scene {
 
         startButton.on('pointerover', () => startButton.setFillStyle(0x5555cc));
         startButton.on('pointerout', () => startButton.setFillStyle(0x3333aa));
-        startButton.on('pointerup', () => this.scene.start("GameScene"));
-
+        startButton.on('pointerup', () => {
+            this.scene.start("GameScene", { playerName: this.playerName });
+        });
         // Controls - adjust position based on orientation
         const controlsY = isPortrait ? height * 0.7 : 400;
         const instructionsY = isPortrait ? height * 0.8 : 450;
