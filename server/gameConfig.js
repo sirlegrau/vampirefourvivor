@@ -1,4 +1,4 @@
-// gameConfig.js - Enhanced configuration for the multiplayer survival game
+// gameConfig.js - Modified to add staggered enemy spawning
 
 // Game world settings
 const WORLD = {
@@ -89,6 +89,20 @@ const WAVES = {
     enemySpawnDelay: 200,        // Delay between spawning enemies within a wave
     timeBetweenWaves: 6000,      // IMPORTANT: 8 seconds between waves
 
+    // Enhanced spawn timing settings
+    spawnTimingSettings: {
+        baseDelay: 200,           // Base delay between individual enemy spawns (milliseconds)
+        groupSize: 3,             // Spawn enemies in small groups
+        groupDelay: 800,          // Additional delay between groups of enemies
+        bossDelay: 1500,          // Extra delay before spawning a boss enemy
+        maxRandomVariation: 300,  // Add random variation to spawn times (±150ms)
+        useSpawnPattern: true,    // Whether to use spawn patterns (like spread, circle, etc.)
+    },
+
+    // Tracking for staged spawning
+    spawnSchedule: [],           // List of enemies to spawn with timestamps
+    lastSpawnTime: 0,            // Timestamp of last enemy spawn
+
     // Explicit wave control states
     waveState: {
         WAITING_TO_START: 'waiting_to_start',  // Initial state or between waves
@@ -110,10 +124,8 @@ const WAVES = {
     getBaseEnemiesForWave: (waveNumber) => {
         if(waveNumber<10){
             return Math.floor(5 + (waveNumber * 3) + Math.pow(waveNumber, 1.4));
-
         }else{
             return Math.floor(5 + (waveNumber * 2) + Math.pow(waveNumber, 1.7));
-
         }
     },
 
@@ -170,8 +182,118 @@ const WAVES = {
     announceWaveTime: 3000,  // 3 seconds to announce wave
     announceBossTime: 5000,  // 5 seconds to announce boss wave
 
-    // IMPORTANT: State management functions for wave control
-    // Function to properly start a new wave (to be called from game loop)
+    // NEW: Spawn pattern definitions
+    spawnPatterns: {
+        RANDOM_EDGES: 'random_edges',   // Randomly from any edge
+        SEQUENCE_EDGES: 'sequence_edges', // One edge after another
+        SURROUNDING: 'surrounding',     // Spawn in a circle surrounding the player
+        DIRECTED: 'directed',           // Spawn from the direction opposite to player movement
+        QUADRANTS: 'quadrants'          // Divide screen into 4 and spawn from each
+    },
+
+    // NEW: Function to create a staggered spawn schedule
+    createSpawnSchedule: function(waveNumber) {
+        const schedule = [];
+        const now = Date.now();
+        let spawnTime = now;
+        let groupCounter = 0;
+
+        // Calculate total enemies of each type to spawn
+        const enemyTypes = Object.keys(this.enemiesToSpawnThisWave);
+
+        // Create a mixed enemy schedule (don't spawn all of one type, then another)
+        // First, create a flattened array of all enemies to spawn
+        const allEnemies = [];
+        enemyTypes.forEach(type => {
+            const count = this.enemiesToSpawnThisWave[type];
+            for (let i = 0; i < count; i++) {
+                allEnemies.push(type);
+            }
+        });
+
+        // Shuffle the array to mix enemy types
+        const shuffledEnemies = [...allEnemies].sort(() => Math.random() - 0.5);
+
+        // Special handling for bosses - save them for last
+        const regularEnemies = shuffledEnemies.filter(type => type !== 'boss' && type !== 'florotingus');
+        const bossEnemies = shuffledEnemies.filter(type => type === 'boss' || type === 'florotingus');
+
+        // Schedule regular enemies first with staggered timing
+        regularEnemies.forEach((type, index) => {
+            // Add some randomness to spawn time
+            const randomVariation = Math.floor(Math.random() * this.spawnTimingSettings.maxRandomVariation) - (this.spawnTimingSettings.maxRandomVariation / 2);
+
+            // Apply group delay every N enemies
+            if (index % this.spawnTimingSettings.groupSize === 0 && index > 0) {
+                spawnTime += this.spawnTimingSettings.groupDelay;
+                groupCounter++;
+
+                // Every 3 groups, add an extra pause
+                if (groupCounter % 3 === 0) {
+                    spawnTime += this.spawnTimingSettings.groupDelay;
+                }
+            }
+
+            // Calculate spawn position based on pattern
+            let spawnPattern = this.spawnPatterns.RANDOM_EDGES;
+
+            // Every few groups, change the spawn pattern
+            if (groupCounter % 2 === 0) {
+                const patterns = Object.values(this.spawnPatterns);
+                spawnPattern = patterns[Math.floor(Math.random() * patterns.length)];
+            }
+
+            // Add to schedule
+            schedule.push({
+                enemyType: type,
+                spawnTime: spawnTime + this.spawnTimingSettings.baseDelay + randomVariation,
+                pattern: spawnPattern
+            });
+
+            // Increment spawn time
+            spawnTime += this.spawnTimingSettings.baseDelay;
+        });
+
+        // Add a significant delay before boss enemies
+        if (bossEnemies.length > 0) {
+            spawnTime += this.spawnTimingSettings.bossDelay;
+
+            // Schedule boss enemies with extra spacing
+            bossEnemies.forEach((type, index) => {
+                schedule.push({
+                    enemyType: type,
+                    spawnTime: spawnTime + (index * this.spawnTimingSettings.bossDelay),
+                    pattern: this.spawnPatterns.SURROUNDING // Bosses surround the player
+                });
+            });
+        }
+
+        return schedule;
+    },
+
+    // NEW: Function to check if it's time to spawn an enemy
+    checkSpawnSchedule: function() {
+        const now = Date.now();
+
+        // No spawns scheduled
+        if (this.spawnSchedule.length === 0) {
+            return null;
+        }
+
+        // Find enemies that should be spawned now
+        const toSpawn = [];
+        this.spawnSchedule = this.spawnSchedule.filter(entry => {
+            if (entry.spawnTime <= now) {
+                toSpawn.push(entry);
+                return false; // Remove from schedule
+            }
+            return true; // Keep in schedule
+        });
+
+        return toSpawn.length > 0 ? toSpawn : null;
+    },
+
+    // MODIFIED: Function to properly start a new wave (to be called from game loop)
     startWave: function(waveNumber, activePlayers) {
         // Don't start if we're already in a wave
         if (this.currentWaveState !== this.waveState.WAITING_TO_START) {
@@ -187,6 +309,10 @@ const WAVES = {
         this.totalEnemiesToSpawn = Object.values(this.enemiesToSpawnThisWave).reduce((sum, count) => sum + count, 0);
         this.enemiesKilledThisWave = 0;
 
+        // Create the staggered spawn schedule
+        this.spawnSchedule = this.createSpawnSchedule(waveNumber);
+        this.lastSpawnTime = Date.now();
+
         // Update state
         this.currentWaveState = this.waveState.SPAWNING;
         this.waveTimestamp = Date.now();
@@ -195,7 +321,7 @@ const WAVES = {
         return true;
     },
 
-    // Function to update wave state (to be called each game tick)
+    // MODIFIED: Function to update wave state (to be called each game tick)
     updateWaveState: function(activeEnemies) {
         const now = Date.now();
 
@@ -209,13 +335,29 @@ const WAVES = {
                 return false;
 
             case this.waveState.SPAWNING:
-                // Still spawning enemies for current wave
-                if (this.totalEnemiesSpawned < this.totalEnemiesToSpawn) {
-                    return false; // Continue spawning
+                // Still spawning enemies for current wave - check if it's time to spawn more
+                const toSpawn = this.checkSpawnSchedule();
+
+                if (toSpawn) {
+                    // Time to spawn more enemies!
+                    toSpawn.forEach(entry => {
+                        // Here you would actually spawn the enemy in your game
+                        // This is just updating our counters for the example
+                        this.totalEnemiesSpawned++;
+                        this.lastSpawnTime = now;
+
+                        // Entry contains:
+                        // - entry.enemyType: the type of enemy to spawn
+                        // - entry.pattern: the spawn pattern to use
+                        // Spawn logic would go here
+                    });
                 }
 
-                // All enemies spawned, move to in-progress
-                this.currentWaveState = this.waveState.IN_PROGRESS;
+                // Check if we've finished spawning all enemies
+                if (this.totalEnemiesSpawned >= this.totalEnemiesToSpawn && this.spawnSchedule.length === 0) {
+                    // All enemies spawned, move to in-progress
+                    this.currentWaveState = this.waveState.IN_PROGRESS;
+                }
                 return false;
 
             case this.waveState.IN_PROGRESS:
@@ -236,6 +378,84 @@ const WAVES = {
             default:
                 return false;
         }
+    },
+
+    // NEW: Helper function to determine enemy spawn position
+    getSpawnPosition: function(pattern, playerPosition) {
+        const { width, height, spawnBorderOffset } = WORLD;
+        let x, y;
+
+        switch (pattern) {
+            case this.spawnPatterns.RANDOM_EDGES:
+                // Pick a random edge
+                const edge = Math.floor(Math.random() * 4);
+                switch (edge) {
+                    case 0: // Top
+                        x = Math.random() * width;
+                        y = spawnBorderOffset;
+                        break;
+                    case 1: // Right
+                        x = width - spawnBorderOffset;
+                        y = Math.random() * height;
+                        break;
+                    case 2: // Bottom
+                        x = Math.random() * width;
+                        y = height - spawnBorderOffset;
+                        break;
+                    case 3: // Left
+                        x = spawnBorderOffset;
+                        y = Math.random() * height;
+                        break;
+                }
+                break;
+
+            case this.spawnPatterns.SURROUNDING:
+                // Spawn in a circle around the player
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 300; // Distance from player
+                x = playerPosition.x + Math.cos(angle) * distance;
+                y = playerPosition.y + Math.sin(angle) * distance;
+
+                // Ensure within bounds
+                x = Math.max(spawnBorderOffset, Math.min(width - spawnBorderOffset, x));
+                y = Math.max(spawnBorderOffset, Math.min(height - spawnBorderOffset, y));
+                break;
+
+            case this.spawnPatterns.QUADRANTS:
+                // Pick a quadrant (0-3)
+                const quadrant = Math.floor(Math.random() * 4);
+                const halfWidth = width / 2;
+                const halfHeight = height / 2;
+
+                // Calculate a position in the selected quadrant
+                switch (quadrant) {
+                    case 0: // Top-left
+                        x = Math.random() * halfWidth;
+                        y = Math.random() * halfHeight;
+                        break;
+                    case 1: // Top-right
+                        x = halfWidth + Math.random() * halfWidth;
+                        y = Math.random() * halfHeight;
+                        break;
+                    case 2: // Bottom-right
+                        x = halfWidth + Math.random() * halfWidth;
+                        y = halfHeight + Math.random() * halfHeight;
+                        break;
+                    case 3: // Bottom-left
+                        x = Math.random() * halfWidth;
+                        y = halfHeight + Math.random() * halfHeight;
+                        break;
+                }
+                break;
+
+            // Add more patterns as needed
+
+            default:
+                // Default to random position on any edge
+                return this.getSpawnPosition(this.spawnPatterns.RANDOM_EDGES, playerPosition);
+        }
+
+        return { x, y };
     }
 };
 
