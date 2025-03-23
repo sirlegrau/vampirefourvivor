@@ -82,26 +82,29 @@ const XP = {
 
 // Wave spawning settings
 const WAVES = {
-    // Initial wave number (start at 1 instead of 0)
-    initialWave: 1,
+    // First wave should be 1, not 0
+    firstWave: 1,
 
-    // Delay before starting first wave
-    initialDelay: 3000,        // 3 seconds before first wave
+    // Core wave management settings
+    enemySpawnDelay: 400,        // Delay between spawning enemies within a wave
+    timeBetweenWaves: 8000,      // IMPORTANT: 8 seconds between waves
 
-    // Delay between enemy spawns within a wave
-    enemySpawnDelay: 400,      // Spawn rate within a wave
+    // Explicit wave control states
+    waveState: {
+        WAITING_TO_START: 'waiting_to_start',  // Initial state or between waves
+        SPAWNING: 'spawning',                  // Currently spawning wave enemies
+        IN_PROGRESS: 'in_progress',            // Wave is active
+        COMPLETE: 'complete'                   // Wave just completed
+    },
 
-    // Minimum time between waves (to prevent waves from starting immediately)
-    minTimeBetweenWaves: 5000, // At least 5 seconds between waves
-
-    // Time to wait after last enemy is killed before starting next wave
-    nextWaveDelay: 5000,       // 5 second breather after clearing a wave
-
-    // Flag to track if all enemies from previous wave are defeated
-    waitForWaveClear: true,    // Enable the wave-on-clear behavior
-
-    // Lock to prevent multiple wave start triggers
-    waveInProgress: false,     // Flag to prevent multiple simultaneous wave starts
+    // Wave management variables
+    currentWaveState: 'waiting_to_start',      // Start in waiting state
+    totalEnemiesSpawned: 0,                    // Counter for enemies spawned in current wave
+    totalEnemiesToSpawn: 0,                    // Total enemies planned for current wave
+    enemiesToSpawnThisWave: {},                // Composition of enemies for current wave
+    waveTimestamp: 0,                          // Timestamp for wave state tracking
+    waveDelay: 3000,                           // Delay before first wave
+    enemiesKilledThisWave: 0,                  // Track enemy kills for the current wave
 
     // Base enemy count scales logarithmically
     getBaseEnemiesForWave: (waveNumber) => {
@@ -161,9 +164,72 @@ const WAVES = {
     announceWaveTime: 3000,  // 3 seconds to announce wave
     announceBossTime: 5000,  // 5 seconds to announce boss wave
 
-    // Helper function to check if a wave is complete
-    isWaveComplete: (activeEnemies) => {
-        return activeEnemies <= 0;
+    // IMPORTANT: State management functions for wave control
+    // Function to properly start a new wave (to be called from game loop)
+    startWave: function(waveNumber, activePlayers) {
+        // Don't start if we're already in a wave
+        if (this.currentWaveState !== this.waveState.WAITING_TO_START) {
+            return false;
+        }
+
+        // Calculate enemies for this wave
+        const baseEnemies = this.getBaseEnemiesForWave(waveNumber);
+        this.enemiesToSpawnThisWave = this.getWaveComposition(waveNumber, baseEnemies, activePlayers);
+
+        // Reset counters
+        this.totalEnemiesSpawned = 0;
+        this.totalEnemiesToSpawn = Object.values(this.enemiesToSpawnThisWave).reduce((sum, count) => sum + count, 0);
+        this.enemiesKilledThisWave = 0;
+
+        // Update state
+        this.currentWaveState = this.waveState.SPAWNING;
+        this.waveTimestamp = Date.now();
+
+        // Flag that a new wave has started
+        return true;
+    },
+
+    // Function to update wave state (to be called each game tick)
+    updateWaveState: function(activeEnemies) {
+        const now = Date.now();
+
+        switch (this.currentWaveState) {
+            case this.waveState.WAITING_TO_START:
+                // Time to start a new wave?
+                if (now - this.waveTimestamp >= this.timeBetweenWaves) {
+                    // The actual starting is done by the game loop calling startWave()
+                    return true; // Signal to game loop to start a new wave
+                }
+                return false;
+
+            case this.waveState.SPAWNING:
+                // Still spawning enemies for current wave
+                if (this.totalEnemiesSpawned < this.totalEnemiesToSpawn) {
+                    return false; // Continue spawning
+                }
+
+                // All enemies spawned, move to in-progress
+                this.currentWaveState = this.waveState.IN_PROGRESS;
+                return false;
+
+            case this.waveState.IN_PROGRESS:
+                // Check if all enemies are dead
+                if (activeEnemies <= 0) {
+                    // Wave completed!
+                    this.currentWaveState = this.waveState.COMPLETE;
+                    this.waveTimestamp = now; // Record completion time
+                    return false;
+                }
+                return false;
+
+            case this.waveState.COMPLETE:
+                // Set waiting to start the next wave after a delay
+                this.currentWaveState = this.waveState.WAITING_TO_START;
+                return false;
+
+            default:
+                return false;
+        }
     }
 };
 
@@ -177,8 +243,33 @@ const SIMULATION = {
 
     // Tracking for wave progression
     activeEnemies: 0,            // Counter for currently active enemies
-    waveComplete: true,          // Flag to track if wave is complete
-    lastWaveEndTime: 0,          // Timestamp of when the last wave ended
+
+    // Wave management that interfaces with WAVES state machine
+    waveManager: {
+        currentWave: 1,          // Start with wave 1 (not 0)
+
+        // Called every game tick
+        update: function(activeEnemies) {
+            // Update the wave state machine
+            const shouldStartNewWave = WAVES.updateWaveState(activeEnemies);
+
+            // If it's time to start a new wave
+            if (shouldStartNewWave) {
+                const activePlayers = 1; // Replace with actual player count from your game
+
+                // Start a new wave and update the wave counter if successful
+                if (WAVES.startWave(this.currentWave, activePlayers)) {
+                    console.log(`Starting wave ${this.currentWave}`); // Debug output
+                }
+            }
+
+            // If a wave just completed, increment the wave counter
+            if (WAVES.currentWaveState === WAVES.waveState.COMPLETE) {
+                this.currentWave++;
+                console.log(`Wave ${this.currentWave - 1} completed, next wave: ${this.currentWave}`); // Debug output
+            }
+        }
+    },
 
     // Damage calculation
     calculateDamage: (baseDamage, playerLevel, isCritical) => {
@@ -290,6 +381,10 @@ const BALANCE = {
         return Math.max(0.7, 1 - (wave * 0.01));
     }
 };
+
+// Initialize the wave system
+// Set initial timestamp for first wave delay
+WAVES.waveTimestamp = Date.now() - (WAVES.timeBetweenWaves - WAVES.waveDelay);
 
 module.exports = {
     WORLD,
