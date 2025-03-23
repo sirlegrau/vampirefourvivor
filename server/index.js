@@ -76,29 +76,53 @@ function startGameLoop() {
     }, config.SIMULATION.tickRate);
     startWaveSystem();
 }
-
 function startWaveSystem() {
+    // Clear any existing interval
     if (waveInterval) clearInterval(waveInterval);
-    spawnWave();
+
+    // Initialize wave manager state
+    currentWave = config.WAVES.firstWave;
+
+    // Create an interval that checks the wave state
     waveInterval = setInterval(() => {
-        currentWave++;
-        console.log(`🌊 Starting wave ${currentWave}`);
-        spawnWave();
-    }, config.WAVES.timeBetweenWaves);
+        const activeEnemyCount = enemies.length;
+
+        // Use the state machine to determine if we should start a new wave
+        const shouldStartNewWave = config.WAVES.updateWaveState(activeEnemyCount);
+
+        if (shouldStartNewWave) {
+            const activePlayerCount = Object.keys(players).length;
+
+            // Start a new wave using the state machine
+            if (config.WAVES.startWave(currentWave, activePlayerCount)) {
+                console.log(`🌊 Starting wave ${currentWave}`);
+                spawnWave();
+            }
+        }
+
+        // Check if we just completed a wave
+        if (config.WAVES.currentWaveState === config.WAVES.waveState.COMPLETE) {
+            currentWave++;
+            console.log(`Wave ${currentWave - 1} completed, next wave: ${currentWave}`);
+            io.emit("waveComplete", { wave: currentWave - 1 });
+        }
+    }, config.SIMULATION.tickRate); // Check more frequently than the wave interval
 }
 
 function spawnWave() {
-    const baseEnemies = config.WAVES.getBaseEnemiesForWave(currentWave);
-    const activePlayerCount = Object.keys(players).length;
-    const enemyCount = config.WAVES.getWaveComposition(currentWave, baseEnemies, activePlayerCount);
+    // Use the enemy composition that was already calculated by the state machine
+    const enemyComposition = config.WAVES.enemiesToSpawnThisWave;
 
-    Object.entries(enemyCount).forEach(([type, count]) => {
+    Object.entries(enemyComposition).forEach(([type, count]) => {
         for (let i = 0; i < count; i++) {
-            setTimeout(() => spawnEnemy(type), i * config.WAVES.enemySpawnDelay);
+            setTimeout(() => {
+                spawnEnemy(type);
+                config.WAVES.totalEnemiesSpawned++; // Update the spawned counter
+            }, i * config.WAVES.enemySpawnDelay);
         }
     });
 
-    io.emit("waveStarted", { wave: currentWave, enemyCount });
+    io.emit("waveStarted", { wave: currentWave, enemyCount: enemyComposition });
 }
 
 function spawnEnemy(type = "basic") {
@@ -247,6 +271,9 @@ function killEnemy(enemy, playerId) {
         player.score += enemy.points;
         io.emit("updateScore", { id: playerId, score: player.score });
     }
+
+    // Update the wave manager's kill counter
+    config.WAVES.enemiesKilledThisWave++;
 
     spawnXpOrb(enemy.x, enemy.y, enemy.xpValue);
     enemies = enemies.filter(e => e.id !== enemy.id);

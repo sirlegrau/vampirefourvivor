@@ -615,15 +615,15 @@ class GameScene extends Phaser.Scene {
         switch (type) {
             case 'fast':
                 enemy.setTint(0xFF9999);
-                enemy.setScale(0.7);
+                enemy.setScale(0.5);
                 break;
             case 'boss':
                 enemy.setTint(0x9999FF);
-                enemy.setScale(1.5);
+                enemy.setScale(1.8);
                 break;
             case 'florotingus':
                 enemy.setTint(0xFF0000);
-                enemy.setScale(2.9);
+                enemy.setScale(3.4);
                 break;
             default:
                 enemy.setTint(0xFFFFFF);
