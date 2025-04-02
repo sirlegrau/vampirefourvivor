@@ -243,11 +243,35 @@ function checkCollisions() {
     Object.entries(players).forEach(([playerId, player]) => {
         xpOrbs = xpOrbs.filter(orb => {
             if (Math.hypot(player.x - orb.x, player.y - orb.y) < config.XP.orbCollectionRadius) {
+                // Add full XP value to the collecting player
                 player.xp += orb.value;
 
-                // Check for level up
+                // Share half the XP value (rounded up) with all other players
+                const sharedXp = Math.ceil(orb.value / 2);
+                Object.entries(players).forEach(([otherPlayerId, otherPlayer]) => {
+                    // Skip the player who collected the orb
+                    if (otherPlayerId !== playerId) {
+                        otherPlayer.xp += sharedXp;
+
+                        // Check for level up for other players
+                        const otherPlayerLeveledUp = checkLevelUp(otherPlayerId);
+
+                        // Emit XP update if they didn't level up (level up already emits an update)
+                        if (!otherPlayerLeveledUp) {
+                            io.emit("updateXP", {
+                                id: otherPlayerId,
+                                xp: otherPlayer.xp,
+                                level: otherPlayer.level,
+                                leveledUp: false
+                            });
+                        }
+                    }
+                });
+
+                // Check for level up for the collecting player
                 const leveledUp = checkLevelUp(playerId);
 
+                // Emit XP update if they didn't level up (level up already emits an update)
                 if (!leveledUp) {
                     io.emit("updateXP", {
                         id: playerId,
@@ -257,10 +281,19 @@ function checkCollisions() {
                     });
                 }
 
+                // Emit that the orb was collected
                 io.emit("xpOrbCollected", orb.id);
-                return false;
+
+                // Also emit a notification about the XP sharing
+                io.emit("xpShared", {
+                    collectorId: playerId,
+                    orbValue: orb.value,
+                    sharedValue: sharedXp
+                });
+
+                return false; // Remove the orb
             }
-            return true;
+            return true; // Keep the orb
         });
     });
 }
@@ -357,17 +390,41 @@ io.on("connection", (socket) => {
         }
     });
 
-    // Handle XP orb collection
     socket.on("collectXpOrb", (orbId) => {
         const orbIndex = xpOrbs.findIndex(o => o.id === orbId);
 
         if (orbIndex !== -1) {
             const orb = xpOrbs[orbIndex];
+
+            // Add full XP value to the collecting player
             players[socket.id].xp += orb.value;
 
-            // Check for level up
+            // Share half the XP value (rounded up) with all other players
+            const sharedXp = Math.ceil(orb.value / 2);
+            Object.entries(players).forEach(([otherPlayerId, otherPlayer]) => {
+                // Skip the player who collected the orb
+                if (otherPlayerId !== socket.id) {
+                    otherPlayer.xp += sharedXp;
+
+                    // Check for level up for other players
+                    const otherPlayerLeveledUp = checkLevelUp(otherPlayerId);
+
+                    // Emit XP update if they didn't level up (level up already emits an update)
+                    if (!otherPlayerLeveledUp) {
+                        io.emit("updateXP", {
+                            id: otherPlayerId,
+                            xp: otherPlayer.xp,
+                            level: otherPlayer.level,
+                            leveledUp: false
+                        });
+                    }
+                }
+            });
+
+            // Check for level up for the collecting player
             const leveledUp = checkLevelUp(socket.id);
 
+            // Emit XP update if they didn't level up (level up already emits an update)
             if (!leveledUp) {
                 io.emit("updateXP", {
                     id: socket.id,
@@ -380,9 +437,15 @@ io.on("connection", (socket) => {
             // Remove the orb
             xpOrbs.splice(orbIndex, 1);
             io.emit("xpOrbCollected", orbId);
+
+            // Also emit a notification about the XP sharing
+            io.emit("xpShared", {
+                collectorId: socket.id,
+                orbValue: orb.value,
+                sharedValue: sharedXp
+            });
         }
     });
-
     // Handle player upgrades
     socket.on("upgrade", (upgradeType) => {
         const player = players[socket.id];
