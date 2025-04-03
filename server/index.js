@@ -4,7 +4,7 @@ const config = require("./config/gameConfig");
 const GameController = require("./controllers/GameController");
 const PlayerController = require("./controllers/PlayerController");
 const EnemyController = require("./controllers/EnemyController");
-const BulletController = require("./con1trollers/BulletController");
+const BulletController = require("./controllers/BulletController");
 const XpController = require("./controllers/XpController");
 const WaveController = require("./controllers/WaveController");
 
